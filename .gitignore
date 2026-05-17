@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Data files (we never commit data)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dbt (used from week 3)
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# Terraform (used from week 6)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Power BI temp files
+~$*.pbix
+*.pbix.bak
+
+# Docker
+docker-data/
+
+# Logs
+*.log
