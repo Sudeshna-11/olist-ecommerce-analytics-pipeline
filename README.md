@@ -87,9 +87,24 @@ docker compose up -d
 
 # 6. Load CSVs into Postgres
 python -m src.ingest.load_olist
+
+# 7. Verify row counts match expected
+python -m src.ingest.verify_load
 ```
 
-After step 6 you'll have 9 raw tables in the `raw` schema of the `olist` database.
+After step 6 you'll have 9 raw tables in the `raw` schema of the `olist` database. Step 7 fails loudly if anything is off.
+
+## Tests
+
+```powershell
+pip install -r requirements-dev.txt
+
+# Unit tests only (no DB needed)
+pytest -m "not integration"
+
+# Full suite (requires Postgres running with the load complete)
+pytest
+```
 
 ## Roadmap
 
@@ -124,9 +139,12 @@ After step 6 you'll have 9 raw tables in the `raw` schema of the `olist` databas
 data_engineer_project/
 ├── data/raw/             # Olist CSVs (gitignored — see data/README.md)
 ├── docs/                 # Architecture diagrams, decisions
-├── src/ingest/           # Python ingestion code
+├── src/ingest/           # Python ingestion + verification
+├── tests/                # pytest unit + integration tests
 ├── docker-compose.yml    # Local Postgres
-├── requirements.txt      # Python deps
+├── pyproject.toml        # pytest config
+├── requirements.txt      # Python deps (runtime)
+├── requirements-dev.txt  # Python deps (+ pytest)
 ├── .env.example          # Env var template
 └── README.md
 ```
