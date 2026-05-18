@@ -8,9 +8,11 @@ Run with:   python -m src.ingest.load_olist
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -52,18 +54,41 @@ def build_engine():
     return create_engine(url, future=True)
 
 
-def load_one(engine, csv_path: Path, table: str) -> int:
+def load_one(engine, csv_path: Path, table: str) -> tuple[int, float]:
+    """Load a CSV into `raw.<table>`. Returns (row_count, elapsed_seconds).
+
+    Pandas infers the column types from the CSV; an empty table is created
+    with that schema, then rows are bulk-loaded via Postgres COPY — roughly
+    an order of magnitude faster than row-by-row INSERTs on the 1M-row
+    geolocation file.
+    """
+    t0 = time.perf_counter()
     df = pd.read_csv(csv_path)
-    df.to_sql(
+
+    df.head(0).to_sql(
         table,
         engine,
         schema="raw",
         if_exists="replace",
         index=False,
-        chunksize=10_000,
-        method="multi",
     )
-    return len(df)
+
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, header=False)
+    buf.seek(0)
+
+    raw_conn = engine.raw_connection()
+    try:
+        with raw_conn.cursor() as cur:
+            cur.copy_expert(
+                f'COPY raw."{table}" FROM STDIN WITH (FORMAT CSV)',
+                buf,
+            )
+        raw_conn.commit()
+    finally:
+        raw_conn.close()
+
+    return len(df), time.perf_counter() - t0
 
 
 def main() -> None:
@@ -79,14 +104,22 @@ def main() -> None:
     with engine.begin() as conn:
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS raw"))
 
-    total = 0
+    total_rows = 0
+    total_secs = 0.0
     for filename, table in TABLE_MAP.items():
         log.info("Loading %-44s -> raw.%s", filename, table)
-        n = load_one(engine, RAW_DIR / filename, table)
-        log.info("  %s rows", f"{n:,}")
-        total += n
+        n, secs = load_one(engine, RAW_DIR / filename, table)
+        rate = int(n / secs) if secs > 0 else 0
+        log.info("  %s rows in %5.1fs (%s rows/s)", f"{n:>9,}", secs, f"{rate:,}")
+        total_rows += n
+        total_secs += secs
 
-    log.info("Done. %s rows across %d tables.", f"{total:,}", len(TABLE_MAP))
+    log.info(
+        "Done. %s rows across %d tables in %.1fs.",
+        f"{total_rows:,}",
+        len(TABLE_MAP),
+        total_secs,
+    )
 
 
 if __name__ == "__main__":
