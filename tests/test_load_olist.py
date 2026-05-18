@@ -1,6 +1,6 @@
-"""Unit tests for the loader's pure logic — no database required."""
+"""Unit tests for the orchestrator's static shape - no database required."""
 
-from src.ingest.load_olist import TABLE_MAP, build_engine
+from src.ingest.load_olist import TABLE_MAP
 
 
 def test_table_map_has_nine_sources():
@@ -20,21 +20,3 @@ def test_table_map_destinations_use_raw_prefix():
 def test_table_map_sources_are_csvs():
     for src in TABLE_MAP:
         assert src.endswith(".csv"), f"source {src!r} is not a .csv"
-
-
-def test_build_engine_uses_postgres_env_vars(monkeypatch):
-    monkeypatch.setenv("POSTGRES_HOST", "db.example.com")
-    monkeypatch.setenv("POSTGRES_PORT", "5499")
-    monkeypatch.setenv("POSTGRES_DB", "test_db")
-    monkeypatch.setenv("POSTGRES_USER", "test_user")
-    monkeypatch.setenv("POSTGRES_PASSWORD", "test_pass")
-
-    engine = build_engine()
-    url = engine.url
-
-    assert url.drivername == "postgresql+psycopg2"
-    assert url.username == "test_user"
-    assert url.password == "test_pass"
-    assert url.host == "db.example.com"
-    assert url.port == 5499
-    assert url.database == "test_db"

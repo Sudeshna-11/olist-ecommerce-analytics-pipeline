@@ -3,7 +3,7 @@
 > Production-grade data pipeline for a real Brazilian e-commerce dataset.
 > **Stack:** Python · Postgres → Snowflake · dbt · Airflow · Power BI · Docker · Terraform · GitHub Actions
 
-**Status:** Week 1 of 8 — Foundations
+**Status:** Week 2 of 8 — Snowflake migration in progress
 
 ---
 
@@ -94,6 +94,21 @@ python -m src.ingest.verify_load
 
 After step 6 you'll have 9 raw tables in the `raw` schema of the `olist` database. Step 7 fails loudly if anything is off.
 
+## Switching to Snowflake (week 2)
+
+The loader dispatches on the `TARGET` env var. To write to Snowflake instead of Postgres:
+
+1. Fill in the `SNOWFLAKE_*` block in `.env` (see `.env.example` for the variable names; note `SNOWFLAKE_ACCOUNT` uses `orgname-accountname` with a **hyphen**).
+2. Set `TARGET=snowflake` in `.env`.
+3. Re-run the same commands:
+
+```powershell
+python -m src.ingest.load_olist     # writes to Snowflake OLIST.RAW
+python -m src.ingest.verify_load    # verifies against Snowflake
+```
+
+The underlying bulk-load path is target-specific: Postgres uses `COPY FROM STDIN`, Snowflake uses `write_pandas` (internal stage + `COPY INTO`). The orchestrator and the row-count manifest are shared.
+
 ## Tests
 
 ```powershell
@@ -110,8 +125,8 @@ pytest
 
 | Week | Theme | Deliverable | Status |
 |---|---|---|---|
-| 1 | Foundations | Project skeleton + Docker Postgres + Olist ingestion script | In progress |
-| 2 | Snowflake + Python | Migrate ingestion to Snowflake; add live FX rates API | |
+| 1 | Foundations | Project skeleton + Docker Postgres + Olist ingestion script | Done |
+| 2 | Snowflake + Python | Migrate ingestion to Snowflake; add live FX rates API | Snowflake done, FX rates pending |
 | 3 | dbt | Staging + marts layers with tests and dbt docs | |
 | 4 | Power BI | Executive / Regional / Customer dashboards | |
 | 5 | Airflow | Daily orchestration DAG, failure alerts | |
@@ -140,6 +155,7 @@ data_engineer_project/
 ├── data/raw/             # Olist CSVs (gitignored — see data/README.md)
 ├── docs/                 # Architecture diagrams, decisions
 ├── src/ingest/           # Python ingestion + verification
+│   └── targets/          # Per-backend modules (postgres.py, snowflake.py)
 ├── tests/                # pytest unit + integration tests
 ├── docker-compose.yml    # Local Postgres
 ├── pyproject.toml        # pytest config

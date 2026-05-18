@@ -1,6 +1,7 @@
 """Verify the raw Olist load by comparing row counts to expected.
 
-Run after `python -m src.ingest.load_olist`:
+Reads the TARGET env var to decide which backend to query (same dispatch
+as `load_olist`). Run after the load:
 
     python -m src.ingest.verify_load
 
@@ -12,33 +13,22 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 
-from sqlalchemy import Engine, text
+from dotenv import load_dotenv
 
 from src.ingest.expected import EXPECTED_ROW_COUNTS
-from src.ingest.load_olist import build_engine
+from src.ingest.targets import get_target
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
     datefmt="%H:%M:%S",
 )
+logging.getLogger("snowflake").setLevel(logging.WARNING)
 log = logging.getLogger("verify_load")
-
-
-def get_actual_counts(engine: Engine) -> dict[str, int]:
-    """Return {table_name: row_count} for every table in the raw schema."""
-    list_sql = text(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = 'raw' ORDER BY table_name"
-    )
-    counts: dict[str, int] = {}
-    with engine.connect() as conn:
-        tables = [row[0] for row in conn.execute(list_sql)]
-        for table in tables:
-            n = conn.execute(text(f'SELECT count(*) FROM raw."{table}"')).scalar_one()
-            counts[table] = int(n)
-    return counts
 
 
 def diff_counts(expected: dict[str, int], actual: dict[str, int]) -> list[str]:
@@ -61,10 +51,18 @@ def diff_counts(expected: dict[str, int], actual: dict[str, int]) -> list[str]:
 
 
 def main() -> int:
-    engine = build_engine()
-    actual = get_actual_counts(engine)
-    problems = diff_counts(EXPECTED_ROW_COUNTS, actual)
+    load_dotenv(_PROJECT_ROOT / ".env")
 
+    target = get_target()
+    log.info("Target backend: %s", target.__name__.rsplit(".", 1)[-1])
+
+    conn = target.connect()
+    try:
+        actual = target.count_tables(conn)
+    finally:
+        target.close(conn)
+
+    problems = diff_counts(EXPECTED_ROW_COUNTS, actual)
     if problems:
         log.error("Row-count check FAILED (%d issue(s)):", len(problems))
         for line in problems:
