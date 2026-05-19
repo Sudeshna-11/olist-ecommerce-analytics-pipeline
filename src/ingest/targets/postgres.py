@@ -13,15 +13,15 @@ import time
 from pathlib import Path
 
 import pandas as pd
-from dotenv import load_dotenv
 from sqlalchemy import Engine, create_engine, text
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+from src.ingest.config import load_env
+
 RAW_SCHEMA = "raw"
 
 
 def connect() -> Engine:
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_env()
     url = (
         f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:"
         f"{os.environ['POSTGRES_PASSWORD']}@"
@@ -36,9 +36,10 @@ def bootstrap_schema(engine: Engine) -> None:
         conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}"))
 
 
-def load_one(engine: Engine, csv_path: Path, table: str) -> tuple[int, float]:
+def load_dataframe(engine: Engine, df: pd.DataFrame, table: str) -> tuple[int, float]:
+    """Drop-and-replace `raw.<table>` with the contents of `df`, bulk-loaded
+    via Postgres COPY FROM STDIN against an in-memory CSV buffer."""
     t0 = time.perf_counter()
-    df = pd.read_csv(csv_path)
 
     df.head(0).to_sql(
         table,
@@ -64,6 +65,10 @@ def load_one(engine: Engine, csv_path: Path, table: str) -> tuple[int, float]:
         raw_conn.close()
 
     return len(df), time.perf_counter() - t0
+
+
+def load_one(engine: Engine, csv_path: Path, table: str) -> tuple[int, float]:
+    return load_dataframe(engine, pd.read_csv(csv_path), table)
 
 
 def count_tables(engine: Engine) -> dict[str, int]:

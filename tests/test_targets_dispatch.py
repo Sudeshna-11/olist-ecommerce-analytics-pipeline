@@ -30,10 +30,14 @@ def test_unknown_target_raises(monkeypatch):
 
 
 def test_targets_expose_required_interface():
-    """Every backend must implement the same five-function protocol."""
+    """Every backend must implement the same six-function protocol."""
     import importlib
 
-    required = {"connect", "bootstrap_schema", "load_one", "count_tables", "close"}
+    required = {
+        "connect", "bootstrap_schema",
+        "load_one", "load_dataframe",
+        "count_tables", "close",
+    }
     for name in VALID_TARGETS:
         mod = importlib.import_module(f"src.ingest.targets.{name}")
         missing = required - set(dir(mod))
