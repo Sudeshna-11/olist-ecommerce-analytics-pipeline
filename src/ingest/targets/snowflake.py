@@ -18,15 +18,14 @@ from pathlib import Path
 
 import pandas as pd
 import snowflake.connector
-from dotenv import load_dotenv
 from snowflake.connector import SnowflakeConnection
 from snowflake.connector.pandas_tools import write_pandas
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+from src.ingest.config import load_env
 
 
 def _env() -> dict[str, str]:
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_env()
     return {
         "account":   os.environ["SNOWFLAKE_ACCOUNT"],
         "user":      os.environ["SNOWFLAKE_USER"],
@@ -55,9 +54,12 @@ def bootstrap_schema(conn: SnowflakeConnection) -> None:
         cur.close()
 
 
-def load_one(conn: SnowflakeConnection, csv_path: Path, table: str) -> tuple[int, float]:
+def load_dataframe(
+    conn: SnowflakeConnection, df: pd.DataFrame, table: str
+) -> tuple[int, float]:
+    """Drop-and-replace `<DB>.<SCHEMA>.<TABLE>` (uppercased) with `df`,
+    bulk-loaded via `write_pandas` (internal stage + `COPY INTO`)."""
     t0 = time.perf_counter()
-    df = pd.read_csv(csv_path)
     success, _nchunks, nrows, _output = write_pandas(
         conn=conn,
         df=df,
@@ -69,6 +71,10 @@ def load_one(conn: SnowflakeConnection, csv_path: Path, table: str) -> tuple[int
     if not success:
         raise RuntimeError(f"write_pandas reported failure for {table!r}")
     return nrows, time.perf_counter() - t0
+
+
+def load_one(conn: SnowflakeConnection, csv_path: Path, table: str) -> tuple[int, float]:
+    return load_dataframe(conn, pd.read_csv(csv_path), table)
 
 
 def count_tables(conn: SnowflakeConnection) -> dict[str, int]:

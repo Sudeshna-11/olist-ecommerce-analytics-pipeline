@@ -3,7 +3,7 @@
 > Production-grade data pipeline for a real Brazilian e-commerce dataset.
 > **Stack:** Python · Postgres → Snowflake · dbt · Airflow · Power BI · Docker · Terraform · GitHub Actions
 
-**Status:** Week 2 of 8 — Snowflake migration in progress
+**Status:** Week 2 of 8 — Snowflake migration + FX rates done
 
 ---
 
@@ -72,8 +72,10 @@ Prereqs: Docker Desktop, Python 3.10+, Git.
 git clone <this-repo>
 cd data_engineer_project
 
-# 2. Copy env template (edit credentials if you want)
+# 2. Copy env templates (secrets live in .secrets.env, everything else in .env)
 Copy-Item .env.example .env
+Copy-Item .secrets.env.example .secrets.env
+# then edit .secrets.env to put real passwords/API keys in it
 
 # 3. Set up Python virtual env
 python -m venv .venv
@@ -85,20 +87,32 @@ docker compose up -d
 
 # 5. Download Olist CSVs into data/raw/  (see data/README.md)
 
-# 6. Load CSVs into Postgres
+# 6. Load CSVs into Postgres (or Snowflake if TARGET=snowflake)
 python -m src.ingest.load_olist
 
-# 7. Verify row counts match expected
+# 7. Fetch FX rates from Frankfurter (BRL -> USD, EUR; 2016-09..2018-12)
+python -m src.ingest.fx_rates
+
+# 8. Verify row counts match expected
 python -m src.ingest.verify_load
 ```
 
-After step 6 you'll have 9 raw tables in the `raw` schema of the `olist` database. Step 7 fails loudly if anything is off.
+After steps 6-7 you'll have 10 raw tables in the `raw` schema. Step 8 fails loudly if anything is off.
+
+## Configuration split: `.env` vs `.secrets.env`
+
+The loader merges two dotenv files at runtime:
+
+- **`.env`** — non-sensitive config (TARGET, hostnames, ports, usernames, warehouse/database names). Safe to share, paste into bug reports, etc.
+- **`.secrets.env`** — passwords, API keys, tokens. Gitignored. Loaded with `override=True` so it always wins.
+
+Both files have a `.example` template committed for reference. The split exists so you can share or screenshot `.env` without leaking credentials, and so a stale password in `.env` can't silently override the real one in `.secrets.env`.
 
 ## Switching to Snowflake (week 2)
 
 The loader dispatches on the `TARGET` env var. To write to Snowflake instead of Postgres:
 
-1. Fill in the `SNOWFLAKE_*` block in `.env` (see `.env.example` for the variable names; note `SNOWFLAKE_ACCOUNT` uses `orgname-accountname` with a **hyphen**).
+1. Fill the non-secret `SNOWFLAKE_*` vars (account, user, warehouse, etc.) in `.env`; put `SNOWFLAKE_PASSWORD` in `.secrets.env`. Note `SNOWFLAKE_ACCOUNT` uses `orgname-accountname` with a **hyphen**, not the slash from the Snowsight URL.
 2. Set `TARGET=snowflake` in `.env`.
 3. Re-run the same commands:
 
@@ -126,7 +140,7 @@ pytest
 | Week | Theme | Deliverable | Status |
 |---|---|---|---|
 | 1 | Foundations | Project skeleton + Docker Postgres + Olist ingestion script | Done |
-| 2 | Snowflake + Python | Migrate ingestion to Snowflake; add live FX rates API | Snowflake done, FX rates pending |
+| 2 | Snowflake + Python | Migrate ingestion to Snowflake; add live FX rates API | Done |
 | 3 | dbt | Staging + marts layers with tests and dbt docs | |
 | 4 | Power BI | Executive / Regional / Customer dashboards | |
 | 5 | Airflow | Daily orchestration DAG, failure alerts | |
@@ -155,13 +169,19 @@ data_engineer_project/
 ├── data/raw/             # Olist CSVs (gitignored — see data/README.md)
 ├── docs/                 # Architecture diagrams, decisions
 ├── src/ingest/           # Python ingestion + verification
+│   ├── config.py         # Dual-file env loader (.env + .secrets.env)
+│   ├── expected.py       # Canonical row-count manifest
+│   ├── load_olist.py     # CSV -> warehouse orchestrator (TARGET-dispatched)
+│   ├── fx_rates.py       # Frankfurter API -> raw_fx_rates
+│   ├── verify_load.py    # Post-load row-count check
 │   └── targets/          # Per-backend modules (postgres.py, snowflake.py)
 ├── tests/                # pytest unit + integration tests
 ├── docker-compose.yml    # Local Postgres
 ├── pyproject.toml        # pytest config
 ├── requirements.txt      # Python deps (runtime)
 ├── requirements-dev.txt  # Python deps (+ pytest)
-├── .env.example          # Env var template
+├── .env.example          # Non-secret env var template
+├── .secrets.env.example  # Secret env var template (passwords, API keys)
 └── README.md
 ```
 

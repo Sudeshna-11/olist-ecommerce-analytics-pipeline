@@ -20,4 +20,7 @@ EXPECTED_ROW_COUNTS: dict[str, int] = {
     "raw_products":                32_951,
     "raw_sellers":                  3_095,
     "raw_category_translation":        71,
+    # raw_fx_rates: 596 ECB business days * 2 quote currencies (USD, EUR)
+    # over the default date range 2016-09-01..2018-12-31.
+    "raw_fx_rates":                 1_192,
 }

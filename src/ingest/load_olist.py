@@ -17,8 +17,7 @@ import logging
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
+from src.ingest.config import load_env
 from src.ingest.targets import get_target
 
 logging.basicConfig(
@@ -47,7 +46,7 @@ TABLE_MAP: dict[str, str] = {
 
 
 def main() -> None:
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_env()
 
     missing = [f for f in TABLE_MAP if not (RAW_DIR / f).exists()]
     if missing:

@@ -13,14 +13,10 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
 
-from dotenv import load_dotenv
-
+from src.ingest.config import load_env
 from src.ingest.expected import EXPECTED_ROW_COUNTS
 from src.ingest.targets import get_target
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +47,7 @@ def diff_counts(expected: dict[str, int], actual: dict[str, int]) -> list[str]:
 
 
 def main() -> int:
-    load_dotenv(_PROJECT_ROOT / ".env")
+    load_env()
 
     target = get_target()
     log.info("Target backend: %s", target.__name__.rsplit(".", 1)[-1])
