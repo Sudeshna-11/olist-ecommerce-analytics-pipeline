@@ -3,7 +3,7 @@
 > Production-grade data pipeline for a real Brazilian e-commerce dataset.
 > **Stack:** Python · Postgres → Snowflake · dbt · Airflow · Power BI · Docker · Terraform · GitHub Actions
 
-**Status:** Week 2 of 8 — Snowflake migration + FX rates done
+**Status:** Week 3 of 8 — dbt staging layer scaffolded, end-to-end run+test against Postgres
 
 ---
 
@@ -123,6 +123,32 @@ python -m src.ingest.verify_load    # verifies against Snowflake
 
 The underlying bulk-load path is target-specific: Postgres uses `COPY FROM STDIN`, Snowflake uses `write_pandas` (internal stage + `COPY INTO`). The orchestrator and the row-count manifest are shared.
 
+## dbt (week 3)
+
+The dbt project lives in [`olist_dbt/`](olist_dbt/) and uses the same `.env`/`.secrets.env` split via a thin wrapper:
+
+```powershell
+pip install -r requirements-dev.txt        # installs dbt-core, dbt-postgres, dbt-snowflake
+
+python scripts/dbt.py debug                 # verify connection
+python scripts/dbt.py deps                  # install dbt_utils
+python scripts/dbt.py run --select staging  # build the staging layer
+python scripts/dbt.py test                  # run not_null / unique / accepted_values / relationships
+```
+
+The wrapper calls `src.ingest.config.load_env()` then dispatches to `dbt` with `--project-dir olist_dbt --profiles-dir olist_dbt` baked in. Equivalent raw command (if your shell already has the env vars set):
+
+```powershell
+dbt run --project-dir olist_dbt --profiles-dir olist_dbt --select staging
+```
+
+Two profile targets are defined in `olist_dbt/profiles.yml`:
+
+- **`dev` (default)** → local Postgres. Free, fast iteration. All weeks-3 development happens here.
+- **`prod`** → Snowflake. `python scripts/dbt.py run --target prod` to deploy.
+
+The same SQL runs against both backends. Materialization defaults: `staging` = view, `intermediate` = ephemeral, `marts` = table. Naming convention `stg_<source>__<entity>` per the dbt style guide.
+
 ## Tests
 
 ```powershell
@@ -141,7 +167,7 @@ pytest
 |---|---|---|---|
 | 1 | Foundations | Project skeleton + Docker Postgres + Olist ingestion script | Done |
 | 2 | Snowflake + Python | Migrate ingestion to Snowflake; add live FX rates API | Done |
-| 3 | dbt | Staging + marts layers with tests and dbt docs | |
+| 3 | dbt | Staging + marts layers with tests and dbt docs | In progress |
 | 4 | Power BI | Executive / Regional / Customer dashboards | |
 | 5 | Airflow | Daily orchestration DAG, failure alerts | |
 | 6 | Terraform + AWS | Deploy Airflow to ECS Fargate | |
@@ -175,17 +201,23 @@ data_engineer_project/
 │   ├── fx_rates.py       # Frankfurter API -> raw_fx_rates
 │   ├── verify_load.py    # Post-load row-count check
 │   └── targets/          # Per-backend modules (postgres.py, snowflake.py)
+├── olist_dbt/            # dbt project (week 3) — staging/intermediate/marts
+│   ├── dbt_project.yml
+│   ├── profiles.yml      # dev=Postgres, prod=Snowflake; reads env_var()
+│   ├── packages.yml      # dbt_utils
+│   └── models/staging/   # stg_olist__* + _sources.yml + _schema.yml
+├── scripts/dbt.py        # Wrapper: load_env() then dispatch to dbt
 ├── tests/                # pytest unit + integration tests
 ├── docker-compose.yml    # Local Postgres
 ├── pyproject.toml        # pytest config
 ├── requirements.txt      # Python deps (runtime)
-├── requirements-dev.txt  # Python deps (+ pytest)
+├── requirements-dev.txt  # Python deps (+ pytest, dbt)
 ├── .env.example          # Non-secret env var template
 ├── .secrets.env.example  # Secret env var template (passwords, API keys)
 └── README.md
 ```
 
-Folders for `dbt/`, `airflow/`, `dashboards/`, `terraform/`, and `.github/workflows/` are added in their respective weeks — kept out for now to keep the repo focused.
+Folders for `airflow/`, `dashboards/`, `terraform/`, and `.github/workflows/` are added in their respective weeks — kept out for now to keep the repo focused.
 
 ## License
 

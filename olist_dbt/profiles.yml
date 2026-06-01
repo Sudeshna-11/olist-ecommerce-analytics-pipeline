@@ -1,0 +1,33 @@
+# Two targets so the same dbt code can run against either backend.
+#   - dev  -> local Docker Postgres (fast, free, default for iteration)
+#   - prod -> Snowflake free trial (production-faithful, used for the
+#             eventual main-branch deploy + dbt docs render)
+#
+# Credentials come from the existing .env / .secrets.env split via
+# scripts/dbt.py, which calls src.ingest.config.load_env() before
+# invoking dbt. Don't put literal credentials in this file.
+
+olist:
+  target: dev
+  outputs:
+
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'olist') }}"
+      schema: analytics
+      threads: 4
+
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'ACCOUNTADMIN') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'OLIST') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'COMPUTE_WH') }}"
+      schema: ANALYTICS
+      threads: 4

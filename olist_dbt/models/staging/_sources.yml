@@ -1,0 +1,47 @@
+version: 2
+
+# Bronze layer: raw tables loaded by src/ingest/load_olist.py and
+# src/ingest/fx_rates.py. Schema is lowercase `raw` on Postgres; on
+# Snowflake the unquoted identifier resolves to RAW (case-folded), so
+# `schema: raw` works for both backends.
+#
+# Freshness blocks are intentionally omitted: the Olist dataset is a
+# one-time historical CSV dump with no source-side load timestamp.
+# We revisit freshness in week 5 once raw_fx_rates becomes a daily
+# Airflow append (rate_date will be the freshness column).
+
+sources:
+  - name: olist_raw
+    description: "Bronze layer — 9 Olist CSVs + Frankfurter FX rates, loaded as-is."
+    schema: raw
+    tables:
+
+      - name: raw_customers
+        description: "Unique customers and their (anonymised) zip code prefix. PK = customer_id."
+
+      - name: raw_orders
+        description: "One row per order. PK = order_id. Links to customer + has status + 4 timestamps."
+
+      - name: raw_order_items
+        description: "Line items within an order. Composite PK = (order_id, order_item_id). Joins to product + seller."
+
+      - name: raw_order_payments
+        description: "Payment installments per order. Composite key = (order_id, payment_sequential)."
+
+      - name: raw_order_reviews
+        description: "Post-purchase reviews. PK = review_id; multiple reviews per order are possible but rare."
+
+      - name: raw_products
+        description: "Product catalog with category (Portuguese), dimensions, weight, photo count. PK = product_id."
+
+      - name: raw_sellers
+        description: "Seller registry with zip prefix + city + state. PK = seller_id."
+
+      - name: raw_geolocation
+        description: "Zip prefix → lat/long map (multiple rows per prefix). NOT unique on zip — needs aggregation."
+
+      - name: raw_category_translation
+        description: "Portuguese → English mapping for the 71 product categories. PK = product_category_name."
+
+      - name: raw_fx_rates
+        description: "BRL→USD,EUR daily rates from Frankfurter (ECB) over 2016-09-01..2018-12-31. Long format."

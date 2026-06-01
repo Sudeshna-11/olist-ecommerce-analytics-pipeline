@@ -3,4 +3,4 @@ sqlalchemy==2.0.36
 psycopg2-binary==2.9.10
 python-dotenv==1.0.1
 requests==2.32.3
-snowflake-connector-python[pandas]==3.12.4
+snowflake-connector-python[pandas]==3.13.2
