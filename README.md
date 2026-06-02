@@ -3,7 +3,7 @@
 > Production-grade data pipeline for a real Brazilian e-commerce dataset.
 > **Stack:** Python · Postgres → Snowflake · dbt · Airflow · Power BI · Docker · Terraform · GitHub Actions
 
-**Status:** Week 3 of 8 — dbt staging layer scaffolded, end-to-end run+test against Postgres
+**Status:** Week 3 of 8 — full dbt staging layer (10 models, 48 tests) green against Postgres
 
 ---
 

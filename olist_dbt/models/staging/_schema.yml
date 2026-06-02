@@ -1,11 +1,12 @@
 version: 2
 
-# Tests demonstrate the four standard dbt test categories:
+# Tests demonstrate the five standard dbt test categories:
 #   * not_null        (data quality)
-#   * unique          (key integrity)
+#   * unique          (key integrity, single column)
 #   * accepted_values (controlled vocabulary / enum)
 #   * relationships   (foreign-key check across models)
-# These run on `dbt test` and fail loudly if invariants break.
+#   * dbt_utils.unique_combination_of_columns  (composite-key integrity)
+# Severities: omitted (default error) and severity=warn are both shown.
 
 models:
 
@@ -55,3 +56,164 @@ models:
                 - processing
                 - approved
                 - created
+
+  - name: stg_olist__order_items
+    description: "Order line items. Composite PK = (order_id, order_item_seq)."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - order_item_seq
+    columns:
+      - name: order_id
+        description: "FK to stg_olist__orders."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__orders')
+              field: order_id
+      - name: order_item_seq
+        description: "1-based sequence within the order."
+        tests:
+          - not_null
+      - name: product_id
+        description: "FK to stg_olist__products."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__products')
+              field: product_id
+      - name: seller_id
+        description: "FK to stg_olist__sellers."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__sellers')
+              field: seller_id
+      - name: item_price_brl
+        tests:
+          - not_null
+
+  - name: stg_olist__order_payments
+    description: "Payment installments. Composite PK = (order_id, payment_seq)."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - payment_seq
+    columns:
+      - name: order_id
+        description: "FK to stg_olist__orders."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__orders')
+              field: order_id
+      - name: payment_seq
+        tests:
+          - not_null
+      - name: payment_type
+        description: "Method of payment."
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - credit_card
+                - boleto
+                - voucher
+                - debit_card
+                - not_defined
+
+  - name: stg_olist__order_reviews
+    description: "Post-purchase reviews. PK = review_id (mostly — see warn)."
+    columns:
+      - name: review_id
+        description: "Review identity. Known data quirk: a handful of review_ids span multiple orders."
+        tests:
+          - not_null
+          - unique:
+              config:
+                severity: warn
+      - name: order_id
+        description: "FK to stg_olist__orders."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__orders')
+              field: order_id
+      - name: review_score
+        description: "1-5 star rating."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+              quote: false
+
+  - name: stg_olist__products
+    description: "Product catalog. PK = product_id."
+    columns:
+      - name: product_id
+        tests:
+          - not_null
+          - unique
+      # product_category_name_pt has nulls (a small number of products lack
+      # a category), so we don't add not_null here. Category integrity gets
+      # checked at the intermediate layer after the EN translation join.
+
+  - name: stg_olist__sellers
+    description: "Sellers. PK = seller_id."
+    columns:
+      - name: seller_id
+        tests:
+          - not_null
+          - unique
+      - name: seller_state
+        tests:
+          - not_null
+
+  - name: stg_olist__geolocation
+    description: "Zip -> lat/lng. NOT unique on zip_prefix (multiple coords per prefix)."
+    columns:
+      - name: zip_prefix
+        tests:
+          - not_null
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+
+  - name: stg_olist__category_translation
+    description: "Portuguese -> English category lookup. 71 rows."
+    columns:
+      - name: product_category_name_pt
+        tests:
+          - not_null
+          - unique
+      - name: product_category_name_en
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_olist__fx_rates
+    description: "Daily BRL->USD,EUR FX rates. Composite PK = (rate_date, base_currency, quote_currency)."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - rate_date
+            - base_currency
+            - quote_currency
+    columns:
+      - name: rate_date
+        tests:
+          - not_null
+      - name: base_currency
+        tests:
+          - not_null
+      - name: quote_currency
+        tests:
+          - not_null
+      - name: fx_rate
+        tests:
+          - not_null
