@@ -4,8 +4,10 @@
 -- finer-grained fct_order_items (built next).
 --
 -- order_id is a degenerate dimension (kept on the fact, no dim table).
--- customer_id is the FK to dim_customers; its relationships test is added
--- when that dim lands. purchase_date_key joins to dim_dates.date_key.
+-- customer_key is the surrogate FK to dim_customers (resolved via the
+-- order's natural customer_id) — kept consistent with fct_order_items so
+-- every fact wires to the conformed dims the same way. purchase_date_key
+-- joins to dim_dates.date_key.
 --
 -- Null-safety: a small number of orders have no line items and/or no
 -- payment record, so the rollups are left-joined and counts/sums coalesced
@@ -36,7 +38,7 @@ final as (
     select
         -- keys
         o.order_id,
-        o.customer_id,
+        c.customer_key,
         cast(extract(year  from o.purchased_at) * 10000
              + extract(month from o.purchased_at) * 100
              + extract(day   from o.purchased_at) as integer)            as purchase_date_key,
@@ -75,6 +77,7 @@ final as (
         coalesce(p.total_payment_brl, 0)        as total_payment_brl
 
     from orders o
+    left join {{ ref('dim_customers') }} c on o.customer_id = c.customer_id
     left join item_totals    i on o.order_id = i.order_id
     left join payment_totals p on o.order_id = p.order_id
 

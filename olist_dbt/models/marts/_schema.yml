@@ -141,13 +141,13 @@ models:
         tests:
           - not_null
           - unique
-      - name: customer_id
-        description: "FK to dim_customers."
+      - name: customer_key
+        description: "Surrogate FK to dim_customers (resolved via the order's customer_id)."
         tests:
           - not_null
           - relationships:
               to: ref('dim_customers')
-              field: customer_id
+              field: customer_key
       - name: purchase_date_key
         description: "FK to dim_dates. Always populated — every order has a purchase timestamp."
         tests:
