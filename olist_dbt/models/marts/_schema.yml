@@ -96,6 +96,27 @@ models:
         tests:
           - not_null
 
+  - name: dim_products
+    description: >
+      SCD Type 2 product dimension, one row per product version (sourced
+      from products_snapshot). English category joined in. Tracks
+      descriptive attributes (category, weight, dimensions) over time —
+      Olist has no product price, so price is not modelled here.
+    columns:
+      - name: product_key
+        description: "Surrogate key, unique per version (md5 of product_id + valid_from)."
+        tests:
+          - not_null
+          - unique
+      - name: product_id
+        description: "Business key. Intentionally NOT unique — repeats across SCD2 versions."
+        tests:
+          - not_null
+      - name: is_current
+        description: "True for the currently-effective version (valid_to is null)."
+        tests:
+          - not_null
+
   - name: dim_sellers
     description: "Seller dimension, one row per seller_id (Type 1). ZIP-level lat/lng centroid joined in."
     columns:

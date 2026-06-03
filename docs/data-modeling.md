@@ -33,7 +33,7 @@ mart_daily_revenue        (gold aggregate)
 | Table | Grain | SCD type | Notes |
 |---|---|---|---|
 | `dim_customers` | 1 row per customer | Type 1 | ZIP-level geo joined in |
-| `dim_products` | 1 row per product | **Type 2** (via dbt snapshot) | English category name joined in; price changes tracked |
+| `dim_products` | 1 row per product *version* | **Type 2** (via dbt snapshot) | English category name joined in; product-attribute changes (category, weight, dimensions) tracked. NB: Olist has no price on the product — price is a per-sale attribute on `order_items` — so SCD2 here tracks descriptive attributes, not price. |
 | `dim_sellers` | 1 row per seller | Type 1 | ZIP-level geo joined in |
 | `dim_dates` | 1 row per calendar day | n/a | Generated with `dbt_utils.date_spine()` |
 
