@@ -43,9 +43,12 @@ models:
           - not_null
           - unique
       - name: customer_id
-        description: "FK to dim_customers (relationships test added once that dim lands)."
+        description: "FK to dim_customers."
         tests:
           - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
       - name: purchase_date_key
         description: "FK to dim_dates. Always populated — every order has a purchase timestamp."
         tests:
@@ -69,5 +72,44 @@ models:
                 - created
       - name: total_payment_brl
         description: "Sum of all payment records on the order, BRL. 0 if no payment row."
+        tests:
+          - not_null
+
+  - name: dim_customers
+    description: >
+      Customer dimension, one row per customer_id (Type 1). ZIP-level
+      lat/lng centroid joined in. customer_unique_id is the stable
+      cross-order shopper identity.
+    columns:
+      - name: customer_key
+        description: "Surrogate key (md5 of customer_id)."
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: "Natural key / grain. FK target for fct_orders."
+        tests:
+          - not_null
+          - unique
+      - name: customer_state
+        description: "Brazilian state code (2 letters)."
+        tests:
+          - not_null
+
+  - name: dim_sellers
+    description: "Seller dimension, one row per seller_id (Type 1). ZIP-level lat/lng centroid joined in."
+    columns:
+      - name: seller_key
+        description: "Surrogate key (md5 of seller_id)."
+        tests:
+          - not_null
+          - unique
+      - name: seller_id
+        description: "Natural key / grain. FK target for fct_order_items (when built)."
+        tests:
+          - not_null
+          - unique
+      - name: seller_state
+        description: "Brazilian state code (2 letters)."
         tests:
           - not_null

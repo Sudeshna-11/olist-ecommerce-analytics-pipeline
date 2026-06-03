@@ -24,3 +24,12 @@ models:
         tests:
           - not_null
           - unique
+
+  - name: int_geolocation__zip_centroids
+    description: "One representative (lat, lng) per zip_prefix, Brazil-bbox-clipped, from stg_olist__geolocation."
+    columns:
+      - name: zip_prefix
+        description: "ZIP prefix PK after collapsing the multi-point grain."
+        tests:
+          - not_null
+          - unique
