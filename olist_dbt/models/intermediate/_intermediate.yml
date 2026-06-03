@@ -1,0 +1,26 @@
+version: 2
+
+# Intermediate models are ephemeral (inlined, never materialised), but
+# dbt still runs tests against them by wrapping the compiled SQL. We test
+# the one thing that matters here: each rollup is exactly one row per
+# order_id, i.e. the grain collapse from line/payment level worked.
+
+models:
+
+  - name: int_orders__item_totals
+    description: "Per-order merchandise rollup (one row per order_id) from stg_olist__order_items."
+    columns:
+      - name: order_id
+        description: "Order PK after collapsing the line-item grain."
+        tests:
+          - not_null
+          - unique
+
+  - name: int_orders__payment_totals
+    description: "Per-order payment rollup (one row per order_id) from stg_olist__order_payments."
+    columns:
+      - name: order_id
+        description: "Order PK after collapsing the payment-split grain."
+        tests:
+          - not_null
+          - unique

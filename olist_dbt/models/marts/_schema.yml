@@ -1,0 +1,73 @@
+version: 2
+
+# Gold layer — Kimball star schema. Grain is declared explicitly on every
+# fact/dim (Kimball discipline: a model you can't state the grain of is a
+# model you can't test). FK integrity is enforced with relationships tests,
+# which is what turns a pile of tables into a navigable star.
+
+models:
+
+  - name: dim_dates
+    description: >
+      Date dimension, one row per calendar day (2016-01-01 .. 2018-12-31),
+      generated with dbt_utils.date_spine(). Conformed: every fact joins to
+      it on date_key.
+    columns:
+      - name: date_key
+        description: "Surrogate key, integer YYYYMMDD. Facts join on this."
+        tests:
+          - not_null
+          - unique
+      - name: date_day
+        description: "Natural key, the calendar date itself."
+        tests:
+          - not_null
+          - unique
+      - name: day_of_week
+        description: "0=Sunday .. 6=Saturday (Postgres extract(dow))."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3, 4, 5, 6]
+              quote: false
+
+  - name: fct_orders
+    description: >
+      Header-grain fact: one row per order_id. Status, delivery cycle-times,
+      and merchandise + payment rollups. Per-line revenue lives in
+      fct_order_items.
+    columns:
+      - name: order_id
+        description: "Degenerate dimension and grain of the fact."
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: "FK to dim_customers (relationships test added once that dim lands)."
+        tests:
+          - not_null
+      - name: purchase_date_key
+        description: "FK to dim_dates. Always populated — every order has a purchase timestamp."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_dates')
+              field: date_key
+      - name: order_status
+        description: "Order lifecycle state (carried from staging)."
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - delivered
+                - shipped
+                - canceled
+                - unavailable
+                - invoiced
+                - processing
+                - approved
+                - created
+      - name: total_payment_brl
+        description: "Sum of all payment records on the order, BRL. 0 if no payment row."
+        tests:
+          - not_null
