@@ -56,6 +56,56 @@ models:
         tests:
           - not_null
 
+  - name: fct_order_reviews
+    description: >
+      Review-grain fact: one row per (review_id, order_id). review_id and
+      order_id are each individually non-unique (a review can span orders;
+      an order can have several reviews) — the pair is the grain, captured
+      by review_key.
+    columns:
+      - name: review_key
+        description: "Surrogate PK = md5(review_id + order_id)."
+        tests:
+          - not_null
+          - unique
+      - name: review_id
+        description: "Review business key. Intentionally NOT unique (a review may cover multiple orders)."
+        tests:
+          - not_null
+      - name: order_id
+        description: "FK to fct_orders. Not unique (an order may have multiple reviews)."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_orders')
+              field: order_id
+      - name: customer_key
+        description: "FK to dim_customers, reached via the order."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_key
+      - name: review_date_key
+        description: "FK to dim_dates (review creation date)."
+        tests:
+          - relationships:
+              to: ref('dim_dates')
+              field: date_key
+      - name: purchase_date_key
+        description: "FK to dim_dates (order purchase date)."
+        tests:
+          - relationships:
+              to: ref('dim_dates')
+              field: date_key
+      - name: review_score
+        description: "1-5 star rating (the measure)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+              quote: false
+
   - name: dim_dates
     description: >
       Date dimension, one row per calendar day (2016-01-01 .. 2018-12-31),
