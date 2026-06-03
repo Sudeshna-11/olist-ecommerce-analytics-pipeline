@@ -33,3 +33,12 @@ models:
         tests:
           - not_null
           - unique
+
+  - name: int_fx_rates__daily
+    description: "BRL->USD,EUR rates forward-filled to one row per calendar day."
+    columns:
+      - name: date_day
+        description: "Calendar day PK."
+        tests:
+          - not_null
+          - unique

@@ -14,7 +14,10 @@
 
 with snapshotted as (
 
-    select * from {{ ref('products_snapshot') }}
+    select
+        *,
+        row_number() over (partition by product_id order by dbt_valid_from) as version_num
+    from {{ ref('products_snapshot') }}
 
 ),
 
@@ -42,8 +45,15 @@ final as (
         p.product_height_cm,
         p.product_width_cm,
 
-        p.dbt_valid_from                                       as valid_from,
-        p.dbt_valid_to                                         as valid_to,
+        -- Floor the first version's valid_from to the dawn of time. The
+        -- snapshot stamps dbt_valid_from at first-run time (today), which is
+        -- AFTER every historical order, so a point-in-time join from a
+        -- 2016-2018 fact would otherwise match no product version. Later
+        -- versions keep their real change timestamp.
+        case when p.version_num = 1
+             then cast('2000-01-01' as timestamp)
+             else p.dbt_valid_from end                          as valid_from,
+        p.dbt_valid_to                                          as valid_to,
         case when p.dbt_valid_to is null then true else false end  as is_current
 
     from snapshotted p

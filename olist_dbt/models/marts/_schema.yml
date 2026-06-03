@@ -7,6 +7,55 @@ version: 2
 
 models:
 
+  - name: fct_order_items
+    description: >
+      Line-grain revenue fact: one row per (order_id, order_item_seq).
+      Incremental on purchased_at. Conformed dims joined by surrogate key;
+      dim_products joined point-in-time. BRL native + USD/EUR via FX.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - order_item_seq
+    columns:
+      - name: order_item_key
+        description: "Surrogate PK = md5(order_id + order_item_seq)."
+        tests:
+          - not_null
+          - unique
+      - name: product_key
+        description: "FK to dim_products (point-in-time version)."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_products')
+              field: product_key
+      - name: seller_key
+        description: "FK to dim_sellers."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_sellers')
+              field: seller_key
+      - name: customer_key
+        description: "FK to dim_customers."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_key
+      - name: purchase_date_key
+        description: "FK to dim_dates."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_dates')
+              field: date_key
+      - name: item_price_brl
+        description: "Line item price, native BRL."
+        tests:
+          - not_null
+
   - name: dim_dates
     description: >
       Date dimension, one row per calendar day (2016-01-01 .. 2018-12-31),
