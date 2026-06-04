@@ -1,0 +1,62 @@
+version: 2
+
+# Gold aggregates — pre-shaped, dashboard-ready tables. Each is a single-grain
+# rollup over the star schema; the tests assert that grain (one row per key)
+# and that the headline measures are populated.
+
+models:
+
+  - name: mart_daily_revenue
+    description: "Revenue per active calendar day. Grain: one row per date_key."
+    columns:
+      - name: date_key
+        description: "Calendar day PK (FK to dim_dates)."
+        tests:
+          - not_null
+          - unique
+      - name: date_day
+        tests:
+          - not_null
+      - name: gmv_brl
+        description: "Gross merchandise value (items + freight), BRL."
+        tests:
+          - not_null
+
+  - name: mart_category_revenue
+    description: "Revenue per English product category. Grain: one row per category."
+    columns:
+      - name: category
+        description: "English category name; 'unknown' for products with no category."
+        tests:
+          - not_null
+          - unique
+      - name: revenue_brl
+        tests:
+          - not_null
+
+  - name: mart_state_performance
+    description: "Order volume, revenue, and delivery performance per customer state."
+    columns:
+      - name: state
+        description: "Brazilian customer state (2 letters). Grain key."
+        tests:
+          - not_null
+          - unique
+      - name: n_orders
+        tests:
+          - not_null
+
+  - name: mart_seller_performance
+    description: "Revenue, volume, and average review score per seller."
+    columns:
+      - name: seller_key
+        description: "Seller surrogate key (FK to dim_sellers). Grain key."
+        tests:
+          - not_null
+          - unique
+      - name: seller_id
+        tests:
+          - not_null
+      - name: revenue_brl
+        tests:
+          - not_null
