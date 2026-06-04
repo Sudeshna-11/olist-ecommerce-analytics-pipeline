@@ -1,224 +1,277 @@
+<div align="center">
+
 # Olist E-Commerce Analytics Pipeline
 
-> Production-grade data pipeline for a real Brazilian e-commerce dataset.
-> **Stack:** Python · Postgres → Snowflake · dbt · Airflow · Power BI · Docker · Terraform · GitHub Actions
+**An end-to-end analytics-engineering pipeline on a real Brazilian e-commerce dataset — Python ingestion → Postgres / Snowflake → a dbt Kimball star schema → BI.**
 
-**Status:** Week 3 of 8 — full dbt staging layer (10 models, 48 tests) green against Postgres
+<br/>
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![dbt](https://img.shields.io/badge/dbt-1.9-FF694B?logo=dbt&logoColor=white)](https://www.getdbt.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?logo=snowflake&logoColor=white)](https://www.snowflake.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
+
+</div>
 
 ---
 
-## What this project does
+## 📖 Project Overview
 
-This is a real, working data pipeline that:
+A working analytics pipeline built on the public [Brazilian Olist dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+(~100K orders across 9 source tables, plus a live FX-rate feed). Raw CSVs are
+ingested with Python, landed in a warehouse, and transformed with dbt into a
+**Kimball star schema** following **medallion (bronze → silver → gold)** layering.
 
-1. **Ingests** raw e-commerce orders from the public [Brazilian Olist dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (~100K orders, 9 source tables).
-2. **Lands** them in a cloud data warehouse (Snowflake).
-3. **Transforms** them into analytics-ready tables using dbt (staging → marts).
-4. **Schedules** daily refreshes via Airflow.
-5. **Visualizes** business KPIs in a Power BI dashboard.
+The same dbt code runs against **two backends** — local Postgres for fast
+iteration and Snowflake for production — and the full suite passes **identically
+on both: 126 tests green** (one intentional warn on a known data quirk).
 
-The whole thing runs in Docker locally and on AWS in production.
+<div align="center">
 
-## Why this matters
+```mermaid
+flowchart LR
+    classDef src    fill:#37474f,stroke:#1d272d,color:#ffffff;
+    classDef bronze fill:#5d4037,stroke:#321c19,color:#ffffff;
+    classDef silver fill:#455a64,stroke:#263238,color:#ffffff;
+    classDef gold   fill:#1b5e20,stroke:#0f3d12,color:#ffffff,font-weight:bold;
+    classDef bi     fill:#0d3b66,stroke:#08233d,color:#ffffff;
 
-For an e-commerce business, the marts layer answers questions like:
+    CSV[Olist CSVs]:::src
+    FX[FX rates API]:::src
+    RAW[(raw schema<br/>10 tables)]:::bronze
+    STG[staging<br/>10 views]:::silver
+    INT[intermediate<br/>rollups + FX fill]:::silver
+    FCT[facts x3]:::gold
+    DIM[dimensions x4]:::gold
+    BI[Power BI]:::bi
 
-- Which product categories drive the most revenue?
-- Where are our customers concentrated geographically?
-- What's our average delivery time vs. estimated, by region?
-- Which sellers are top-rated vs. lowest-rated?
-
-## Data modeling
-
-This project uses **medallion layering (bronze/silver/gold) with a Kimball star schema at the gold layer** — the modern dbt-standard architecture. Full design in [docs/data-modeling.md](docs/data-modeling.md).
-
-- **Bronze** (raw schema) — 9 source tables, 1:1 with CSVs
-- **Silver** — staging (clean/rename) → intermediate (reusable business logic)
-- **Gold** — Kimball facts (`fct_orders`, `fct_order_items`, `fct_order_reviews`) and dimensions (`dim_customers`, `dim_products`, `dim_sellers`, `dim_dates`) + dashboard aggregates
-
-Demonstrated concepts: layered architecture, surrogate keys, conformed dimensions, two facts at different grains, SCD Type 2 (via dbt snapshots), generated date dimension, dbt source freshness, incremental models, data quality tests, dbt docs lineage graph.
-
-## Architecture (target state, end of week 8)
-
-```
-   [Olist CSVs]          [FX rates API]
-        │                      │
-        └──────────┬───────────┘
-                   ▼
-            Python ingest
-          (Docker container)
-                   │
-                   ▼
-            Snowflake (raw schema)
-                   │
-                   ▼  dbt: staging → intermediate → marts
-            Snowflake (analytics schema)
-                   │
-                   ▼
-            Power BI dashboard
-
-   Orchestration: Airflow DAG (daily)
-   Infra:         Terraform on AWS (ECS Fargate)
-   CI/CD:         GitHub Actions (lint, dbt test, deploy)
-   Quality:       dbt tests + Great Expectations
+    CSV --> RAW
+    FX --> RAW
+    RAW --> STG --> INT --> FCT
+    INT --> DIM
+    FCT --> BI
+    DIM --> BI
+    linkStyle default stroke:#888888,stroke-width:2px;
 ```
 
-## Quick start (week 1 — local)
+</div>
+
+---
+
+## 🧭 Reading Order
+
+If you're just landing here:
+
+1. **[`docs/data-modeling.md`](docs/data-modeling.md)** — why medallion + Kimball,
+   the grain of every fact/dim, and what was deliberately rejected.
+2. **[`docs/architecture.md`](docs/architecture.md)** — how data moves from CSV to
+   warehouse to dashboard, and the infrastructure target state.
+3. **[`olist_dbt/models/`](olist_dbt/models)** — the SQL itself; each model opens
+   with a comment block stating its grain and intent.
+
+---
+
+## 🎯 Project Requirements
+
+| # | Requirement |
+|---|-------------|
+| 1 | Ingest 9 Olist CSVs + a live FX feed into a warehouse with row-count verification |
+| 2 | Run the same transformation code against both Postgres (dev) and Snowflake (prod) |
+| 3 | Model a Kimball star schema — facts at their natural grain, conformed dimensions |
+| 4 | Track product-attribute history with a Slowly Changing Dimension (Type 2) |
+| 5 | Convert native BRL revenue to USD/EUR using historical daily exchange rates |
+| 6 | Enforce data quality with tests at every layer (keys, FKs, enums, custom invariants) |
+| 7 | Schedule daily refreshes (Airflow) and surface KPIs in a BI dashboard (Power BI) |
+| 8 | Run reproducibly in Docker locally and on AWS in production |
+
+---
+
+## 🏗️ Data Architecture
+
+Medallion layering describes how data is refined; Kimball describes how the
+business-ready gold tables are shaped. They compose. Full design in
+[`docs/data-modeling.md`](docs/data-modeling.md).
+
+| Layer | dbt folder | Schema | Role |
+|-------|-----------|--------|------|
+| **Bronze** — raw | `models/staging/_sources.yml` | `raw` | 1:1 mirror of the source CSVs, untouched |
+| **Silver** — staging | `models/staging/` | `staging` | Rename, cast, light cleaning; 10 views, 1:1 with sources |
+| **Silver** — intermediate | `models/intermediate/` | (ephemeral) | Reusable rollups + FX gap-fill; never queried directly |
+| **Gold** — marts | `models/marts/` | `marts` | Kimball facts + dimensions, BI-ready |
+
+---
+
+## 🛠️ Tools & Technologies
+
+| Category | Choice | Why |
+|----------|--------|-----|
+| Local warehouse | PostgreSQL (Docker) | Free, ubiquitous, near-identical SQL to cloud warehouses |
+| Cloud warehouse | Snowflake | Most-requested warehouse in current data roles |
+| Transformation | dbt-core (`dbt_utils`) | Industry-standard analytics engineering |
+| Ingestion | Python 3.10+ (`psycopg`, `write_pandas`) | Backend-dispatched bulk loaders |
+| Orchestration | Airflow *(week 5)* | Most-listed orchestrator in job postings |
+| Dashboard | Power BI *(week 4)* | Works natively against a star schema |
+| Containers | Docker Compose | Reproducible local environment |
+| Infra-as-code | Terraform on AWS *(week 6)* | ECS Fargate deployment |
+| Quality | dbt tests + Great Expectations *(week 7)* | Data quality is the headline ask |
+
+---
+
+## 📊 Gold Layer — The Star Schema
+
+Three facts at their natural grain, conformed across four dimensions by
+surrogate key. Built and tested on both backends.
+
+| Model | Grain | Type / technique | Rows |
+|-------|-------|------------------|-----:|
+| `fct_orders` | one order | Header fact — delivery SLAs, merchandise + payment rollups | 99,441 |
+| `fct_order_items` | one order line | **Incremental** fact — revenue, BRL→USD/EUR, point-in-time product join | 112,650 |
+| `fct_order_reviews` | one (review, order) | Review fact — score + response time | 99,224 |
+| `dim_customers` | one customer | Type 1, surrogate key, ZIP geo centroid | 99,441 |
+| `dim_sellers` | one seller | Type 1, surrogate key, ZIP geo centroid | 3,095 |
+| `dim_products` | one product *version* | **SCD Type 2** via dbt snapshot | 32,951 |
+| `dim_dates` | one calendar day | Generated with `dbt_utils.date_spine()` | 1,096 |
+
+**Data quality:** 🟩 **126 tests pass** · 🟨 1 intentional warn — identical on
+Postgres and Snowflake. Tests span `not_null`, `unique`, `accepted_values`,
+`relationships` (FK integrity across the star), `dbt_utils` composite-key
+checks, and a custom singular test guarding the SCD2 one-current-version
+invariant. The lone warn flags 789 `review_id`s that legitimately span multiple
+orders — surfaced, not hidden.
+
+The marts answer questions like:
+
+- Which product categories drive the most revenue, in BRL *and* USD?
+- Where are customers and sellers concentrated geographically?
+- What's average delivery time versus the estimate, by region?
+- Which sellers are top- versus lowest-rated?
+
+---
+
+## ⚙️ Quick Start
 
 Prereqs: Docker Desktop, Python 3.10+, Git.
 
 ```powershell
 # 1. Clone
-git clone <this-repo>
-cd data_engineer_project
+git clone https://github.com/Sudeshna-11/olist-ecommerce-analytics-pipeline.git
+cd olist-ecommerce-analytics-pipeline
 
-# 2. Copy env templates (secrets live in .secrets.env, everything else in .env)
+# 2. Env templates — non-secret config in .env, credentials in .secrets.env
 Copy-Item .env.example .env
 Copy-Item .secrets.env.example .secrets.env
-# then edit .secrets.env to put real passwords/API keys in it
+# then edit .secrets.env with real passwords / API keys
 
-# 3. Set up Python virtual env
+# 3. Python virtual env
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# 4. Spin up Postgres in Docker
+# 4. Start Postgres in Docker
 docker compose up -d
 
-# 5. Download Olist CSVs into data/raw/  (see data/README.md)
+# 5. Download the Olist CSVs into data/raw/  (see data/README.md)
 
-# 6. Load CSVs into Postgres (or Snowflake if TARGET=snowflake)
+# 6. Load CSVs + FX rates, then verify row counts
 python -m src.ingest.load_olist
-
-# 7. Fetch FX rates from Frankfurter (BRL -> USD, EUR; 2016-09..2018-12)
 python -m src.ingest.fx_rates
-
-# 8. Verify row counts match expected
 python -m src.ingest.verify_load
 ```
 
-After steps 6-7 you'll have 10 raw tables in the `raw` schema. Step 8 fails loudly if anything is off.
+After step 6 you'll have 10 tables in the `raw` schema; `verify_load` fails
+loudly if any count is off.
 
-## Configuration split: `.env` vs `.secrets.env`
+---
 
-The loader merges two dotenv files at runtime:
+## 🔧 dbt: dev (Postgres) & prod (Snowflake)
 
-- **`.env`** — non-sensitive config (TARGET, hostnames, ports, usernames, warehouse/database names). Safe to share, paste into bug reports, etc.
-- **`.secrets.env`** — passwords, API keys, tokens. Gitignored. Loaded with `override=True` so it always wins.
-
-Both files have a `.example` template committed for reference. The split exists so you can share or screenshot `.env` without leaking credentials, and so a stale password in `.env` can't silently override the real one in `.secrets.env`.
-
-## Switching to Snowflake (week 2)
-
-The loader dispatches on the `TARGET` env var. To write to Snowflake instead of Postgres:
-
-1. Fill the non-secret `SNOWFLAKE_*` vars (account, user, warehouse, etc.) in `.env`; put `SNOWFLAKE_PASSWORD` in `.secrets.env`. Note `SNOWFLAKE_ACCOUNT` uses `orgname-accountname` with a **hyphen**, not the slash from the Snowsight URL.
-2. Set `TARGET=snowflake` in `.env`.
-3. Re-run the same commands:
+The dbt project lives in [`olist_dbt/`](olist_dbt) and reuses the same
+`.env` / `.secrets.env` split through a thin wrapper that calls `load_env()`
+before dispatching to dbt:
 
 ```powershell
-python -m src.ingest.load_olist     # writes to Snowflake OLIST.RAW
-python -m src.ingest.verify_load    # verifies against Snowflake
+pip install -r requirements-dev.txt     # dbt-core, dbt-postgres, dbt-snowflake
+
+python scripts/dbt.py deps              # install dbt_utils
+python scripts/dbt.py build             # run + test every model (dev / Postgres)
+python scripts/dbt.py build --target prod   # same code, Snowflake
+python scripts/dbt.py docs generate     # catalog + lineage graph
 ```
 
-The underlying bulk-load path is target-specific: Postgres uses `COPY FROM STDIN`, Snowflake uses `write_pandas` (internal stage + `COPY INTO`). The orchestrator and the row-count manifest are shared.
+Two targets are defined in `olist_dbt/profiles.yml`:
 
-## dbt (week 3)
+| Target | Backend | Use |
+|--------|---------|-----|
+| `dev` *(default)* | Local Postgres | Free, fast iteration |
+| `prod` | Snowflake | Production-faithful deploy |
 
-The dbt project lives in [`olist_dbt/`](olist_dbt/) and uses the same `.env`/`.secrets.env` split via a thin wrapper:
+Materialization defaults: `staging` = view, `intermediate` = ephemeral,
+`marts` = table — with `fct_order_items` incremental and `dim_products` backed
+by a dbt snapshot. Config is split so `.env` is shareable while
+`.secrets.env` (gitignored, `override=True`) holds the real credentials.
 
-```powershell
-pip install -r requirements-dev.txt        # installs dbt-core, dbt-postgres, dbt-snowflake
+---
 
-python scripts/dbt.py debug                 # verify connection
-python scripts/dbt.py deps                  # install dbt_utils
-python scripts/dbt.py run --select staging  # build the staging layer
-python scripts/dbt.py test                  # run not_null / unique / accepted_values / relationships
-```
-
-The wrapper calls `src.ingest.config.load_env()` then dispatches to `dbt` with `--project-dir olist_dbt --profiles-dir olist_dbt` baked in. Equivalent raw command (if your shell already has the env vars set):
-
-```powershell
-dbt run --project-dir olist_dbt --profiles-dir olist_dbt --select staging
-```
-
-Two profile targets are defined in `olist_dbt/profiles.yml`:
-
-- **`dev` (default)** → local Postgres. Free, fast iteration. All weeks-3 development happens here.
-- **`prod`** → Snowflake. `python scripts/dbt.py run --target prod` to deploy.
-
-The same SQL runs against both backends. Materialization defaults: `staging` = view, `intermediate` = ephemeral, `marts` = table. Naming convention `stg_<source>__<entity>` per the dbt style guide.
-
-## Tests
-
-```powershell
-pip install -r requirements-dev.txt
-
-# Unit tests only (no DB needed)
-pytest -m "not integration"
-
-# Full suite (requires Postgres running with the load complete)
-pytest
-```
-
-## Roadmap
+## 🚀 Roadmap
 
 | Week | Theme | Deliverable | Status |
-|---|---|---|---|
-| 1 | Foundations | Project skeleton + Docker Postgres + Olist ingestion script | Done |
-| 2 | Snowflake + Python | Migrate ingestion to Snowflake; add live FX rates API | Done |
-| 3 | dbt | Staging + marts layers with tests and dbt docs | In progress |
-| 4 | Power BI | Executive / Regional / Customer dashboards | |
-| 5 | Airflow | Daily orchestration DAG, failure alerts | |
-| 6 | Terraform + AWS | Deploy Airflow to ECS Fargate | |
-| 7 | CI/CD + Quality | GitHub Actions; Great Expectations | |
-| 8 | Polish | Architecture diagram, Loom walkthrough, business outcome write-up | |
+|------|-------|-------------|--------|
+| 1 | Foundations | Project structure + Docker Postgres + Olist ingestion | ✅ Done |
+| 2 | Snowflake + Python | Snowflake backend dispatch + live FX-rate feed | ✅ Done |
+| 3 | dbt | Staging → intermediate → gold star schema, tests, docs | ✅ Done |
+| 4 | Power BI | Executive / regional / customer dashboards | ⬜ Next |
+| 5 | Airflow | Daily orchestration DAG + failure alerts | ⬜ |
+| 6 | Terraform + AWS | Deploy to ECS Fargate | ⬜ |
+| 7 | CI/CD + Quality | GitHub Actions + Great Expectations | ⬜ |
+| 8 | Polish | Architecture diagram, walkthrough, business write-up | ⬜ |
 
-## Tech choices and why
+---
 
-| Layer | Tool | Why |
-|---|---|---|
-| Local storage | Postgres (Docker) | Free, ubiquitous, identical SQL to most warehouses |
-| Cloud warehouse | Snowflake | #1 most-requested warehouse on Upwork data gigs |
-| Transformation | dbt-core | Industry standard; recruiters search for it by name |
-| Orchestration | Airflow | Most-listed orchestrator in current job postings |
-| Dashboard | Power BI | #1 BI tool on Upwork |
-| Containers | Docker + docker-compose | Reproducibility = trust |
-| Infra-as-code | Terraform on AWS | Signals "real engineer" |
-| Quality | dbt tests + Great Expectations | Data quality is the #1 client ask |
-| CI/CD | GitHub Actions | Free, ubiquitous, recruiters look for green badges |
-
-## Project layout
+## 📂 Repository Structure
 
 ```
-data_engineer_project/
-├── data/raw/             # Olist CSVs (gitignored — see data/README.md)
-├── docs/                 # Architecture diagrams, decisions
-├── src/ingest/           # Python ingestion + verification
-│   ├── config.py         # Dual-file env loader (.env + .secrets.env)
-│   ├── expected.py       # Canonical row-count manifest
-│   ├── load_olist.py     # CSV -> warehouse orchestrator (TARGET-dispatched)
-│   ├── fx_rates.py       # Frankfurter API -> raw_fx_rates
-│   ├── verify_load.py    # Post-load row-count check
-│   └── targets/          # Per-backend modules (postgres.py, snowflake.py)
-├── olist_dbt/            # dbt project (week 3) — staging/intermediate/marts
-│   ├── dbt_project.yml
-│   ├── profiles.yml      # dev=Postgres, prod=Snowflake; reads env_var()
-│   ├── packages.yml      # dbt_utils
-│   └── models/staging/   # stg_olist__* + _sources.yml + _schema.yml
-├── scripts/dbt.py        # Wrapper: load_env() then dispatch to dbt
-├── tests/                # pytest unit + integration tests
-├── docker-compose.yml    # Local Postgres
-├── pyproject.toml        # pytest config
-├── requirements.txt      # Python deps (runtime)
-├── requirements-dev.txt  # Python deps (+ pytest, dbt)
-├── .env.example          # Non-secret env var template
-├── .secrets.env.example  # Secret env var template (passwords, API keys)
+olist-ecommerce-analytics-pipeline/
+├── data/raw/                Olist CSVs (gitignored — see data/README.md)
+├── docs/                    architecture.md, data-modeling.md
+├── src/ingest/              Python ingestion + verification
+│   ├── config.py            Dual-file env loader (.env + .secrets.env)
+│   ├── load_olist.py        CSV → warehouse orchestrator (TARGET-dispatched)
+│   ├── fx_rates.py          Frankfurter API → raw_fx_rates
+│   ├── verify_load.py       Post-load row-count check
+│   └── targets/             Per-backend loaders (postgres.py, snowflake.py)
+├── olist_dbt/               dbt project
+│   ├── models/
+│   │   ├── staging/         stg_olist__* views + _sources.yml + _schema.yml
+│   │   ├── intermediate/    order rollups, geo centroids, daily FX fill
+│   │   └── marts/           fct_* + dim_* star schema
+│   ├── snapshots/           products_snapshot (SCD2)
+│   ├── macros/              convert_brl (FX conversion)
+│   ├── tests/               custom singular tests
+│   └── profiles.yml         dev=Postgres, prod=Snowflake
+├── scripts/dbt.py           Wrapper: load_env() then dispatch to dbt
+├── tests/                   pytest unit + integration tests
+├── docker-compose.yml       Local Postgres
+├── requirements.txt         Runtime deps
+├── requirements-dev.txt     + pytest, dbt
 └── README.md
 ```
 
-Folders for `airflow/`, `dashboards/`, `terraform/`, and `.github/workflows/` are added in their respective weeks — kept out for now to keep the repo focused.
+Folders for `airflow/`, `dashboards/`, `terraform/`, and `.github/workflows/`
+arrive in their respective weeks.
 
-## License
+---
 
-MIT
+## 📚 Documentation
+
+| Document | What's inside |
+|----------|---------------|
+| [`docs/data-modeling.md`](docs/data-modeling.md) | Medallion + Kimball design, grain of every fact/dim, rejected alternatives |
+| [`docs/architecture.md`](docs/architecture.md) | End-to-end data flow and infrastructure target state |
+
+---
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
