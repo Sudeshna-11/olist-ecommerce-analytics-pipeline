@@ -234,7 +234,7 @@ by a dbt snapshot. Config is split so `.env` is shareable while
 ```
 olist-ecommerce-analytics-pipeline/
 ├── data/raw/                Olist CSVs (gitignored — see data/README.md)
-├── docs/                    architecture.md, data-modeling.md
+├── docs/                    architecture, data-modeling, metrics, dashboards
 ├── src/ingest/              Python ingestion + verification
 │   ├── config.py            Dual-file env loader (.env + .secrets.env)
 │   ├── load_olist.py        CSV → warehouse orchestrator (TARGET-dispatched)
@@ -246,6 +246,7 @@ olist-ecommerce-analytics-pipeline/
 │   │   ├── staging/         stg_olist__* views + _sources.yml + _schema.yml
 │   │   ├── intermediate/    order rollups, geo centroids, daily FX fill
 │   │   └── marts/           fct_* + dim_* star schema
+│   │       └── aggregates/  mart_* dashboard-ready rollups (week 4)
 │   ├── snapshots/           products_snapshot (SCD2)
 │   ├── macros/              convert_brl (FX conversion)
 │   ├── tests/               custom singular tests
@@ -269,6 +270,8 @@ arrive in their respective weeks.
 |----------|---------------|
 | [`docs/data-modeling.md`](docs/data-modeling.md) | Medallion + Kimball design, grain of every fact/dim, rejected alternatives |
 | [`docs/architecture.md`](docs/architecture.md) | End-to-end data flow and infrastructure target state |
+| [`docs/metrics.md`](docs/metrics.md) | Metric/KPI spec — every measure mapped to its aggregate, currency, and additivity rules |
+| [`docs/dashboards.md`](docs/dashboards.md) | Power BI dashboard design — four pages, each visual bound to an aggregate |
 
 ---
 
