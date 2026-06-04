@@ -108,7 +108,7 @@ The report connects to the **`ANALYTICS_marts` schema on Snowflake** (prod — t
 
 | Not shown | Why |
 |---|---|
-| Customer-level drill (repeat-purchase, cohorts) | No customer aggregate exists yet — would need `mart_customer_cohorts` via `customer_unique_id`. Out of scope for this pass; candidate for a 5th page. |
+| Customer retention page | `mart_customer_cohorts` now **exists** (acquisition-month grain, repeat-rate + CLV via `customer_unique_id`) but its dashboard page isn't laid out here yet — a candidate 5th page. Measures are in [metrics.md](metrics.md). |
 | EUR revenue | Only `mart_daily_revenue` carries `items_eur`; not enough coverage for a dedicated visual. |
 | Payment-method breakdown | Lives on `fct_orders`, not surfaced in any aggregate — add a `mart_payment_mix` if a dashboard needs it. |
 | Live/DirectQuery refresh | Aggregates are tiny and refresh nightly; Import mode is correct. |

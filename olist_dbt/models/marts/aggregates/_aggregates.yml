@@ -60,3 +60,20 @@ models:
       - name: revenue_brl
         tests:
           - not_null
+
+  - name: mart_customer_cohorts
+    description: "Monthly acquisition cohorts and repeat-purchase rate, counted over customer_unique_id. Grain: one row per cohort month (first-purchase month)."
+    columns:
+      - name: cohort_month
+        description: "First day of the month a cohort's customers were acquired (first order). Grain key."
+        tests:
+          - not_null
+          - unique
+      - name: n_customers
+        description: "Distinct customers (customer_unique_id) acquired in the cohort month."
+        tests:
+          - not_null
+      - name: repeat_rate_pct
+        description: "Share of the cohort that ever placed a 2nd+ order, as a percentage."
+        tests:
+          - not_null
