@@ -52,6 +52,10 @@ mart_daily_revenue        (gold aggregate)
 
 Forcing both questions into one fact would either lose grain (lose product-level detail) or duplicate header columns across line items (wastes storage and risks summation errors). Two facts at their natural grain is the Kimball-correct answer.
 
+## Metrics
+
+The gold aggregates roll these facts up into dashboard-ready tables. **What each measure means, which aggregate exposes it, and where additivity breaks** is specified in **[Metric / KPI spec](metrics.md)** — the source of truth for reconciling a number across two tiles (e.g. why `revenue_brl` and `revenue_usd` don't convert at the FX rate, or why `n_orders` can't be summed across categories).
+
 ## Modeling concepts demonstrated
 
 | Concept | Where |
