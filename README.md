@@ -234,7 +234,7 @@ by a dbt snapshot. Config is split so `.env` is shareable while
 ```
 olist-ecommerce-analytics-pipeline/
 ├── data/raw/                Olist CSVs (gitignored — see data/README.md)
-├── docs/                    architecture, data-modeling, metrics, dashboards
+├── docs/                    architecture, data-modeling, metrics, dashboards, powerbi-connection
 ├── src/ingest/              Python ingestion + verification
 │   ├── config.py            Dual-file env loader (.env + .secrets.env)
 │   ├── load_olist.py        CSV → warehouse orchestrator (TARGET-dispatched)
@@ -272,6 +272,7 @@ arrive in their respective weeks.
 | [`docs/architecture.md`](docs/architecture.md) | End-to-end data flow and infrastructure target state |
 | [`docs/metrics.md`](docs/metrics.md) | Metric/KPI spec — every measure mapped to its aggregate, currency, and additivity rules |
 | [`docs/dashboards.md`](docs/dashboards.md) | Power BI dashboard design — four pages, each visual bound to an aggregate |
+| [`docs/powerbi-connection.md`](docs/powerbi-connection.md) | Connect Power BI to Snowflake `ANALYTICS_marts` + the full DAX measure set |
 
 ---
 

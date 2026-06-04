@@ -53,7 +53,7 @@ The report connects to the **`ANALYTICS_marts` schema on Snowflake** (prod — t
 |---|---|---|
 | Hero | **Filled map** of Brazil | location `state` (2-letter UF), color saturation `sum(gmv_brl)` |
 | KPI card | Total orders | `sum(n_orders)` |
-| KPI card | Avg delivery days (national) | `sum(n_orders * avg_delivery_days) / sum(n_orders)` weighted, or re-derive — **do not** plain-average |
+| KPI card | Avg delivery days (national) | weight by **delivered** orders: `sum(avg_delivery_days * n_delivered) / sum(n_delivered)` — **do not** plain-average (DAX in powerbi-connection.md) |
 | KPI card | National on-time % | `sum(n_on_time) / sum(n_delivered)` (DAX) — **not** `AVERAGE(on_time_pct)` |
 | Table | State leaderboard | `state`, `n_orders`, `gmv_brl`, `avg_delivery_days`, `on_time_pct`; conditional-format on-time % red→green |
 | Secondary | **Scatter** — delivery vs on-time | x `avg_delivery_days`, y `on_time_pct`, size `n_orders`, point `state` — surfaces slow *and* unreliable states |
