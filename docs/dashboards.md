@@ -1,12 +1,12 @@
 # Dashboard design spec
 
-The blueprint for the Power BI report: four pages, each backed by one gold aggregate. This is the layout to build the `.pbix` from — every visual below names its source table, the columns it binds to, and the measure definition it relies on (defined once in **[Metric / KPI spec](metrics.md)**, not repeated here).
+The blueprint for the Power BI report: five pages, each backed by one gold aggregate. This is the layout to build the `.pbix` from — every visual below names its source table, the columns it binds to, and the measure definition it relies on (defined once in **[Metric / KPI spec](metrics.md)**, not repeated here).
 
 Power BI is a GUI and lives outside this repo; what's version-controlled is this spec plus the SQL aggregates it consumes. The `.pbix` and screenshots land in `dashboards/` when built.
 
 ## How Power BI consumes the marts
 
-The report connects to the **`ANALYTICS_marts` schema on Snowflake** (prod — the schema is bare `marts` on local Postgres dev) and imports the four aggregate tables, all materialized and tested green on Snowflake:
+The report connects to the **`ANALYTICS_marts` schema on Snowflake** (prod — the schema is bare `marts` on local Postgres dev) and imports the five aggregate tables, all materialized and tested green on Snowflake:
 
 | Page | Source table | Grain | Connector |
 |---|---|---|---|
@@ -14,8 +14,9 @@ The report connects to the **`ANALYTICS_marts` schema on Snowflake** (prod — t
 | Regional Performance | `mart_state_performance` | one state | Snowflake (Import mode) |
 | Category Mix | `mart_category_revenue` | one category | Snowflake (Import mode) |
 | Seller Scorecard | `mart_seller_performance` | one seller | Snowflake (Import mode) |
+| Customer Retention | `mart_customer_cohorts` | one acquisition month | Snowflake (Import mode) |
 
-**Why four independent tables instead of the raw star.** Each aggregate is a pre-shaped, single-grain rollup — Power BI does no joins, no fan-out, no DAX gymnastics to get a correct number. The tradeoff: the four tables don't cross-filter each other (a state click won't filter the category page). That's deliberate — these are *four standalone executive views*, not one drill-everywhere model. If cross-filtering is wanted later, import the star (`fct_*` + `dim_*`) into a second model; this report is the fast, correct, dashboard-tuned path. **Import mode** (not DirectQuery) because the aggregates are tiny (≤3,095 rows) and refresh nightly — no reason to round-trip Snowflake on every click.
+**Why independent tables instead of the raw star.** Each aggregate is a pre-shaped, single-grain rollup — Power BI does no joins, no fan-out, no DAX gymnastics to get a correct number. The tradeoff: the five tables don't cross-filter each other (a state click won't filter the category page). That's deliberate — these are *five standalone executive views*, not one drill-everywhere model. If cross-filtering is wanted later, import the star (`fct_*` + `dim_*`) into a second model; this report is the fast, correct, dashboard-tuned path. **Import mode** (not DirectQuery) because the aggregates are tiny (≤3,095 rows) and refresh nightly — no reason to round-trip Snowflake on every click.
 
 ## Global conventions
 
@@ -98,9 +99,29 @@ The report connects to the **`ANALYTICS_marts` schema on Snowflake** (prod — t
 
 ---
 
+## Page 5 — Customer Retention
+
+**Source:** `mart_customer_cohorts` · **Question:** "How well do we acquire customers, and do they come back?"
+
+| Slot | Visual | Binding |
+|---|---|---|
+| KPI card | Total customers | `sum(n_customers)` (96,096 — unique shoppers, not orders) |
+| KPI card | Overall repeat rate | `sum(n_repeat_customers) / sum(n_customers)` (DAX) — **not** `AVERAGE(repeat_rate_pct)`; reads ~3.1% |
+| KPI card | Avg CLV (BRL) | `sum(gmv_brl) / sum(n_customers)` (DAX) |
+| KPI card | Orders per customer | `sum(total_orders) / sum(n_customers)` (DAX) |
+| Hero | **Combo (column + line)** — acquisition vs retention over time | axis `cohort_month`; columns `sum(n_customers)`; line `Repeat Rate %` on the secondary axis |
+| Secondary | **Column** — repeat rate by cohort | axis `cohort_month`, value `Repeat Rate %` (the DAX measure, not the raw column) |
+| Secondary | **Line** — CLV trend by cohort | axis `cohort_month`, value `Avg CLV (BRL)` |
+| Table | Cohort detail | `cohort_month`, `n_customers`, `n_repeat_customers`, `repeat_rate_pct`, `avg_orders_per_customer`, `gmv_brl`, `avg_clv_brl` |
+| Slicers | `cohort_month` (range) | |
+
+**Notes.** This page's headline is the **deliberately surfaced low-retention finding** — Olist's overall repeat rate is ~3%, the real story of the dataset. Retention is counted over `customer_unique_id` (a shopper sits in exactly one cohort), so `sum(n_customers)` is a *true* unique-customer total — unlike the order counts on other pages. The ratio columns (`repeat_rate_pct`, `avg_orders_per_customer`, `avg_clv_brl`) are correct **only at single-cohort grain**; any card or multi-cohort total must use the re-derived DAX measures below, never `AVERAGE()` the stored percentage. The 2016-09 → 2016-12 cohorts are tiny (Olist's ramp-up) — their repeat rates are noisy on a handful of customers; annotate rather than over-read them.
+
+---
+
 ## Cross-page slicers & interactions
 
-- A **date slicer** only applies to Page 1 (the only time-grained aggregate). The other three are point-in-time rollups over the full history — don't fake a date filter on them.
+- **Date axes are page-local.** Page 1 (`date_day`) and Page 5 (`cohort_month`) each carry their own time grain on their own table; they don't share a date dimension and won't cross-filter. Pages 2–4 are point-in-time rollups over the full history — don't fake a date filter on them.
 - Set **edit-interactions** so KPI cards don't get filtered by their own page's detail table clicks where that would double-filter.
 - Add a **report-level tooltip page** showing the underlying counts (`n_orders`, `n_items`) so any revenue figure can be sanity-checked on hover.
 
@@ -108,7 +129,7 @@ The report connects to the **`ANALYTICS_marts` schema on Snowflake** (prod — t
 
 | Not shown | Why |
 |---|---|
-| Customer retention page | `mart_customer_cohorts` now **exists** (acquisition-month grain, repeat-rate + CLV via `customer_unique_id`) but its dashboard page isn't laid out here yet — a candidate 5th page. Measures are in [metrics.md](metrics.md). |
+| Cohort retention triangle (cohort × months-since) | The cohort mart is summarised to one row per acquisition month, not a full retention matrix. A triangle would need a `(cohort_month, order_month)` grain — Olist's ~3% repeat rate makes the extra cells mostly empty, so it's not worth the grain. |
 | EUR revenue | Only `mart_daily_revenue` carries `items_eur`; not enough coverage for a dedicated visual. |
 | Payment-method breakdown | Lives on `fct_orders`, not surfaced in any aggregate — add a `mart_payment_mix` if a dashboard needs it. |
 | Live/DirectQuery refresh | Aggregates are tiny and refresh nightly; Import mode is correct. |

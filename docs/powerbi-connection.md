@@ -28,11 +28,12 @@ These mirror `olist_dbt/profiles.yml` (prod target). The dbt `schema: ANALYTICS`
 2. Server = `<account>.snowflakecomputing.com`, Warehouse = `COMPUTE_WH`.
 3. Data Connectivity mode = **Import** (not DirectQuery). The aggregates are ≤3,095 rows and refresh nightly — there's no reason to round-trip Snowflake on every click, and Import gives the snappiest report.
 4. Authenticate (Snowflake username/password, or SSO if your account uses it).
-5. In the Navigator, expand `OLIST → ANALYTICS_marts` and tick the four tables:
+5. In the Navigator, expand `OLIST → ANALYTICS_marts` and tick the five tables:
    - `MART_DAILY_REVENUE`
    - `MART_CATEGORY_REVENUE`
    - `MART_STATE_PERFORMANCE`
    - `MART_SELLER_PERFORMANCE`
+   - `MART_CUSTOMER_COHORTS`
 6. **Load** (not Transform, unless you want the optional renames in Step 2).
 
 Snowflake returns identifiers **uppercased** (`GMV_BRL`, `MART_DAILY_REVENUE`). DAX is case-insensitive, so the measures below resolve whether you leave them uppercase or rename — no need to touch them.
@@ -47,13 +48,14 @@ In **Transform Data** (Power Query) or the column tools, set:
 | `date_day` | Date |
 | `date_key`, `purchase_date_key` | Whole number (it's a YYYYMMDD surrogate — mark **Do not summarize**) |
 | `n_*` (counts) | Whole number, **Do not summarize** |
-| `avg_review_score`, `avg_delivery_days`, `on_time_pct` | Decimal, **Do not summarize** (these are pre-computed ratios — never let Power BI auto-sum them) |
+| `avg_review_score`, `avg_delivery_days`, `on_time_pct`, `repeat_rate_pct`, `avg_orders_per_customer`, `avg_clv_brl` | Decimal, **Do not summarize** (these are pre-computed ratios/averages — never let Power BI auto-sum them) |
+| `cohort_month` | Date |
 
 Marking the count and ratio columns "Do not summarize" is the single most important step: it stops a careless drag-to-canvas from silently summing `on_time_pct` or averaging `n_orders`.
 
 ## Step 3 — The data model (no relationships)
 
-Leave the four tables **unrelated**. Each is a standalone single-grain rollup feeding its own page; there's no conformed key to join them on at this grain, and faking one would let one page silently mis-filter another. This is the deliberate trade from [dashboards.md](dashboards.md#how-power-bi-consumes-the-marts) — four correct standalone views over one cross-filtering model.
+Leave the five tables **unrelated**. Each is a standalone single-grain rollup feeding its own page; there's no conformed key to join them on at this grain, and faking one would let one page silently mis-filter another. This is the deliberate trade from [dashboards.md](dashboards.md#how-power-bi-consumes-the-marts) — five correct standalone views over one cross-filtering model.
 
 Create one empty **`_Measures`** table (Home → Enter Data → blank table named `_Measures`) and house every measure below in it, so measures are organized by intent rather than scattered across the four source tables.
 
@@ -138,6 +140,21 @@ Avg Review Score =
 ```
 
 `Avg Review Score` is **volume-weighted** by `n_reviews` so it rolls up correctly — never `AVERAGE([avg_review_score])`, which would weight a 1-review seller the same as a 1,000-review seller. Sellers with `n_reviews = 0` carry a blank `avg_review_score`; they contribute 0 to both sides of the DIVIDE, so they drop out of the weighted average cleanly while still counting in revenue measures. `Seller Orders` over-counts multi-seller orders — same caveat as category.
+
+### Customer Retention — `mart_customer_cohorts`
+
+```dax
+Total Customers      = SUM(mart_customer_cohorts[n_customers])
+Repeat Customers     = SUM(mart_customer_cohorts[n_repeat_customers])
+Total Customer Orders = SUM(mart_customer_cohorts[total_orders])
+Lifetime GMV (BRL)   = SUM(mart_customer_cohorts[gmv_brl])
+
+Repeat Rate %        = DIVIDE([Repeat Customers], [Total Customers])
+Orders per Customer  = DIVIDE([Total Customer Orders], [Total Customers])
+Avg CLV (BRL)        = DIVIDE([Lifetime GMV (BRL)], [Total Customers])
+```
+
+Every ratio here **re-derives from `n_customers`**, so it's correct at any grain — a single cohort, a slicer range, or the grand total. The three stored ratio columns (`repeat_rate_pct`, `avg_orders_per_customer`, `avg_clv_brl`) are valid **only** in a single-cohort row context; the moment a card or a multi-cohort visual aggregates them, use these measures. `AVERAGE([repeat_rate_pct])` would weight a 200-customer cohort the same as a 12,000-customer one and report a wrong national rate (the un-weighted mean of monthly rates ≠ the true 3.1%). Because customers are keyed by `customer_unique_id`, `Total Customers` is a genuine unique-shopper count (96,096) — the only "count" in the whole model that's safe to read as a deduplicated total.
 
 ## Refresh strategy
 
