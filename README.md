@@ -150,6 +150,24 @@ The marts answer questions like:
 
 ---
 
+## 📈 Dashboards (Power BI)
+
+Five executive pages built directly on the gold aggregates over a live Snowflake
+Import connection. Full design and the complete DAX set live in
+[`dashboards/`](dashboards/README.md).
+
+![Executive Overview](dashboards/screenshots/01-executive-overview.png)
+
+| Page | Source aggregate | Headline |
+|------|------------------|----------|
+| Executive Overview | `mart_daily_revenue` | R$15.84M GMV, 98.67K orders, AOV R$160.58 over time |
+| Regional Performance | `mart_state_performance` | GMV choropleth + delivery / on-time % by state |
+| Category Mix | `mart_category_revenue` | Top 15 of 72 categories drive ~76% of revenue |
+| Seller Scorecard | `mart_seller_performance` | 3,095 sellers, revenue vs review rating (churn risk) |
+| Customer Retention | `mart_customer_cohorts` | 96,096 unique shoppers, ~3% repeat rate |
+
+---
+
 ## ⚙️ Quick Start
 
 Prereqs: Docker Desktop, Python 3.10+, Git.
@@ -221,8 +239,8 @@ by a dbt snapshot. Config is split so `.env` is shareable while
 | 1 | Foundations | Project structure + Docker Postgres + Olist ingestion | ✅ Done |
 | 2 | Snowflake + Python | Snowflake backend dispatch + live FX-rate feed | ✅ Done |
 | 3 | dbt | Staging → intermediate → gold star schema, tests, docs | ✅ Done |
-| 4 | Power BI | Executive / regional / customer dashboards | ⬜ Next |
-| 5 | Airflow | Daily orchestration DAG + failure alerts | ⬜ |
+| 4 | Power BI | Executive / regional / customer dashboards | ✅ Done |
+| 5 | Airflow | Daily orchestration DAG + failure alerts | ⬜ Next |
 | 6 | Terraform + AWS | Deploy to ECS Fargate | ⬜ |
 | 7 | CI/CD + Quality | GitHub Actions + Great Expectations | ⬜ |
 | 8 | Polish | Architecture diagram, walkthrough, business write-up | ⬜ |
@@ -271,7 +289,7 @@ arrive in their respective weeks.
 | [`docs/data-modeling.md`](docs/data-modeling.md) | Medallion + Kimball design, grain of every fact/dim, rejected alternatives |
 | [`docs/architecture.md`](docs/architecture.md) | End-to-end data flow and infrastructure target state |
 | [`docs/metrics.md`](docs/metrics.md) | Metric/KPI spec — every measure mapped to its aggregate, currency, and additivity rules |
-| [`docs/dashboards.md`](docs/dashboards.md) | Power BI dashboard design — four pages, each visual bound to an aggregate |
+| [`docs/dashboards.md`](docs/dashboards.md) | Power BI dashboard design — five pages, each visual bound to an aggregate |
 | [`docs/powerbi-connection.md`](docs/powerbi-connection.md) | Connect Power BI to Snowflake `ANALYTICS_marts` + the full DAX measure set |
 
 ---

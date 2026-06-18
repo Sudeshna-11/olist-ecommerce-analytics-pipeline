@@ -1,0 +1,9 @@
+# Power BI reports are zip archives — never let Git normalize line endings,
+# it would corrupt the binary.
+*.pbix binary
+*.pbit binary
+
+# Image assets
+*.png binary
+*.jpg binary
+*.jpeg binary
