@@ -1,0 +1,101 @@
+# Airflow stack for the Olist pipeline (week 5).
+#
+# LocalExecutor — three containers (metadata Postgres + webserver +
+# scheduler), no Celery/redis/worker. Run from this folder:
+#     docker compose up -d --build
+# UI at http://localhost:8080  (admin / admin)
+#
+# The repo root is mounted at /opt/project so tasks run the real src/,
+# scripts/dbt.py, olist_dbt/ and data/raw/. Credentials come from the
+# repo's ../.env and ../.secrets.env (the same files the CLI uses).
+
+x-airflow-common: &airflow-common
+  build:
+    context: ..
+    dockerfile: airflow/Dockerfile
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    # Local-only demo key so the webserver and scheduler share one Fernet key
+    # (the metadata DB is a throwaway local container). Regenerate via
+    # `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+    # for any non-local deployment.
+    AIRFLOW__CORE__FERNET_KEY: "ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg="
+  env_file:
+    # Snowflake creds + SLACK_WEBHOOK_URL, reused from the project root.
+    - ../.env
+    - ../.secrets.env
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./config:/opt/airflow/config
+    - ..:/opt/project
+  user: "50000:0"
+  depends_on: &airflow-common-depends-on
+    airflow-metadata:
+      condition: service_healthy
+
+services:
+  airflow-metadata:
+    image: postgres:16-alpine
+    container_name: olist_airflow_metadata
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_metadata_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: olist_airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin --password admin \
+          --firstname admin --lastname admin \
+          --role Admin --email admin@example.com || true
+    restart: on-failure
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: olist_airflow_webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: olist_airflow_scheduler
+    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  airflow_metadata_data:

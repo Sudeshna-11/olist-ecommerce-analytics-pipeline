@@ -232,6 +232,38 @@ by a dbt snapshot. Config is split so `.env` is shareable while
 
 ---
 
+## ⛓️ Orchestration (Airflow)
+
+A daily Airflow DAG runs the whole pipeline against **Snowflake prod** so the
+Power BI report refreshes nightly. The stack lives in [`airflow/`](airflow/README.md)
+— a Docker Compose **LocalExecutor** setup (metadata Postgres + webserver +
+scheduler) that mounts the repo and runs the real `src/` and dbt code from an
+isolated venv, with failure alerts to Slack.
+
+```
+load_olist ─┐
+            ├─> verify_load ─> dbt deps ─> dbt run (staging)
+fx_rates  ──┘                          ─> dbt snapshot
+                                       ─> dbt run (marts) ─> dbt test
+```
+
+<!-- Screenshot: save the all-green grid view from http://localhost:8080
+     to airflow/screenshots/dag-run.png, then uncomment the line below. -->
+<!-- ![olist_daily_pipeline — all tasks green](airflow/screenshots/dag-run.png) -->
+
+The dbt stage is split around the SCD2 **snapshot**: it reads the staging views
+and feeds `dim_products`, so staging is built first, the snapshot is taken, then
+the marts are built and tested. Schedule `0 7 * * *`, `catchup=False`, 2 retries
+per task, and an `on_failure_callback` that posts to a Slack webhook.
+
+```powershell
+cd airflow
+docker compose up -d --build        # build image + start the stack
+start http://localhost:8080         # UI, admin / admin
+```
+
+---
+
 ## 🚀 Roadmap
 
 | Week | Theme | Deliverable | Status |
@@ -240,7 +272,7 @@ by a dbt snapshot. Config is split so `.env` is shareable while
 | 2 | Snowflake + Python | Snowflake backend dispatch + live FX-rate feed | ✅ Done |
 | 3 | dbt | Staging → intermediate → gold star schema, tests, docs | ✅ Done |
 | 4 | Power BI | Executive / regional / customer dashboards | ✅ Done |
-| 5 | Airflow | Daily orchestration DAG + failure alerts | ⬜ Next |
+| 5 | Airflow | Daily orchestration DAG + failure alerts | ✅ Done |
 | 6 | Terraform + AWS | Deploy to ECS Fargate | ⬜ |
 | 7 | CI/CD + Quality | GitHub Actions + Great Expectations | ⬜ |
 | 8 | Polish | Architecture diagram, walkthrough, business write-up | ⬜ |
@@ -270,6 +302,10 @@ olist-ecommerce-analytics-pipeline/
 │   ├── tests/               custom singular tests
 │   └── profiles.yml         dev=Postgres, prod=Snowflake
 ├── scripts/dbt.py           Wrapper: load_env() then dispatch to dbt
+├── airflow/                 Daily orchestration DAG (Docker Compose, week 5)
+│   ├── dags/                olist_daily_pipeline (ingest → snapshot → dbt)
+│   ├── Dockerfile           Airflow image + isolated project venv
+│   └── docker-compose.yml   LocalExecutor stack
 ├── tests/                   pytest unit + integration tests
 ├── docker-compose.yml       Local Postgres
 ├── requirements.txt         Runtime deps
@@ -277,8 +313,8 @@ olist-ecommerce-analytics-pipeline/
 └── README.md
 ```
 
-Folders for `airflow/`, `dashboards/`, `terraform/`, and `.github/workflows/`
-arrive in their respective weeks.
+Folders for `terraform/` and `.github/workflows/` arrive in their respective
+weeks.
 
 ---
 

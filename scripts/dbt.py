@@ -16,6 +16,7 @@ and SNOWFLAKE_* env vars set; this wrapper does that step via the same
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -28,10 +29,21 @@ from src.ingest.config import load_env  # noqa: E402
 PROJECT_DIR = REPO_ROOT / "olist_dbt"
 
 
+def _dbt_executable() -> str:
+    """Resolve the dbt CLI in the same environment as the running Python.
+
+    Calling the venv interpreter directly (as Airflow's BashOperator does)
+    does not put its bin/ on PATH, so a bare ``dbt`` lookup fails. Look it
+    up next to ``sys.executable`` first; fall back to PATH for an activated
+    shell.
+    """
+    return shutil.which("dbt", path=str(Path(sys.executable).parent)) or "dbt"
+
+
 def main() -> int:
     load_env()
     cmd = [
-        "dbt",
+        _dbt_executable(),
         *sys.argv[1:],
         "--project-dir", str(PROJECT_DIR),
         "--profiles-dir", str(PROJECT_DIR),

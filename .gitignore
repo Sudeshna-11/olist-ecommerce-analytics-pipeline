@@ -52,5 +52,16 @@ logs/
 # Docker
 docker-data/
 
+# Airflow (week 5) — keep the folder structure, ignore runtime output.
+# The generic `logs/` rule above also matches airflow/logs as a directory,
+# so re-include the dir before carving out its .gitkeep.
+!airflow/logs/
+airflow/logs/*
+!airflow/logs/.gitkeep
+airflow/plugins/*
+!airflow/plugins/.gitkeep
+airflow/config/*
+!airflow/config/.gitkeep
+
 # Logs
 *.log
