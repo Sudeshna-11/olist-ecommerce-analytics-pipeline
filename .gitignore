@@ -43,7 +43,7 @@ logs/
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally committed (pins provider versions)
 
 # Power BI temp files
 ~$*.pbix
