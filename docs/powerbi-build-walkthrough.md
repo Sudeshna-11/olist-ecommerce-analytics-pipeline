@@ -386,7 +386,7 @@ Add **Page 5 measures**. New page → `Customer Retention`. (The story of this p
 
 ---
 
-## Take screenshots, then tell Claude
+## Take screenshots
 
 1. Press **Win + Shift + S** to start the snipping tool, drag a box around each page, and save the picture. Put the five pictures in the folder `dashboards/screenshots/` with these exact names:
    - `01-executive-overview.png`
@@ -395,7 +395,7 @@ Add **Page 5 measures**. New page → `Customer Retention`. (The story of this p
    - `04-seller-scorecard.png`
    - `05-customer-retention.png`
 2. ⚠️ **Never** screenshot the Snowflake login window (it shows your account name). Only screenshot the finished charts.
-3. Tell Claude "the pbix and screenshots are in place" — Claude will save (commit) them and add the pictures to the project's README.
+3. Commit the `.pbix` and the five screenshots, then embed the pictures in the project's README.
 
 ---
 
