@@ -12,6 +12,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?logo=snowflake&logoColor=white)](https://www.snowflake.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
+[![Terraform](https://img.shields.io/badge/Terraform-1.5%2B-7B42BC?logo=terraform&logoColor=white)](infra/)
+[![AWS](https://img.shields.io/badge/AWS-ECS%20Fargate-FF9900?logo=amazonaws&logoColor=white)](docs/deployment.md)
 
 </div>
 
@@ -264,6 +266,56 @@ start http://localhost:8080         # UI, admin / admin
 
 ---
 
+## ☁️ Deployment (Terraform + AWS)
+
+The pipeline is deployed to **AWS ECS Fargate**, defined entirely in Terraform
+([`infra/`](infra/README.md)). A single container image (the whole
+`ingest → verify → dbt build`) is launched daily by **EventBridge Scheduler** —
+Snowflake stays the warehouse, AWS provides the scheduled compute. Airflow remains
+the local/dev orchestrator; this is the production trigger. Design rationale and
+trade-offs in [`docs/deployment.md`](docs/deployment.md).
+
+```
+EventBridge Scheduler  cron(0 7 * * ? *)
+        │ ecs:RunTask (FARGATE)
+        ▼
+ECS Fargate task ──pull── ECR (pipeline image)
+   ├─ raw CSVs ──── S3              ├─ password ──── Secrets Manager
+   ├─ logs ──────── CloudWatch      └─ transforms ── Snowflake
+Terraform state ── S3 + DynamoDB lock   ·   default VPC, no NAT gateway
+```
+
+| Concern | Choice |
+|---------|--------|
+| Compute | ECS Fargate run-to-completion task (no always-on services) |
+| Image | Built from [`deploy/Dockerfile`](deploy/), pushed to ECR |
+| Schedule | EventBridge Scheduler, `cron(0 7 * * ? *)` UTC |
+| Secrets | Snowflake password in Secrets Manager (never in TF state) |
+| State | S3 backend + DynamoDB lock (bootstrapped separately) |
+| Cost | ~$0–2/mo; `terraform destroy` returns it to $0 |
+
+```powershell
+# bootstrap remote state once, then deploy
+terraform -chdir=infra/bootstrap init; terraform -chdir=infra/bootstrap apply
+cd infra; cp backend.hcl.example backend.hcl   # fill from bootstrap outputs
+terraform init -backend-config=backend.hcl
+terraform apply                                # build/push image + provision
+```
+
+A full cloud run is verified green: **`PASS=126 WARN=1 ERROR=0`** in CloudWatch,
+identical to local and Airflow.
+
+<div align="center">
+
+![Fargate task run — olist-pipeline:2 stopped cleanly](infra/screenshots/01-ecs-task-run.png)
+![CloudWatch — PASS=126 WARN=1 ERROR=0, pipeline complete](infra/screenshots/02-cloudwatch-logs.png)
+![EventBridge — daily schedule enabled](infra/screenshots/03-eventbridge-schedule.png)
+![Secrets Manager — Snowflake password, value masked](infra/screenshots/04-secrets-manager.png)
+
+</div>
+
+---
+
 ## 🚀 Roadmap
 
 | Week | Theme | Deliverable | Status |
@@ -273,7 +325,7 @@ start http://localhost:8080         # UI, admin / admin
 | 3 | dbt | Staging → intermediate → gold star schema, tests, docs | ✅ Done |
 | 4 | Power BI | Executive / regional / customer dashboards | ✅ Done |
 | 5 | Airflow | Daily orchestration DAG + failure alerts | ✅ Done |
-| 6 | Terraform + AWS | Deploy to ECS Fargate | ⬜ |
+| 6 | Terraform + AWS | Deploy to ECS Fargate | ✅ Done |
 | 7 | CI/CD + Quality | GitHub Actions + Great Expectations | ⬜ |
 | 8 | Polish | Architecture diagram, walkthrough, business write-up | ⬜ |
 
@@ -306,6 +358,15 @@ olist-ecommerce-analytics-pipeline/
 │   ├── dags/                olist_daily_pipeline (ingest → snapshot → dbt)
 │   ├── Dockerfile           Airflow image + isolated project venv
 │   └── docker-compose.yml   LocalExecutor stack
+├── deploy/                  Pipeline container for the cloud (week 6)
+│   ├── Dockerfile           Single-image ingest + dbt runtime
+│   └── entrypoint.sh        ingest → verify → dbt build, in DAG order
+├── infra/                   Terraform — ECS Fargate deployment (week 6)
+│   ├── bootstrap/           One-time S3 + DynamoDB remote-state backend
+│   ├── ecr.tf s3.tf         Image repo + raw-data bucket
+│   ├── ecs.tf iam.tf        Cluster, task definition, task roles
+│   ├── secrets.tf           Snowflake password (Secrets Manager)
+│   └── schedule.tf          EventBridge daily trigger
 ├── tests/                   pytest unit + integration tests
 ├── docker-compose.yml       Local Postgres
 ├── requirements.txt         Runtime deps
@@ -313,8 +374,7 @@ olist-ecommerce-analytics-pipeline/
 └── README.md
 ```
 
-Folders for `terraform/` and `.github/workflows/` arrive in their respective
-weeks.
+The `.github/workflows/` folder arrives in week 7.
 
 ---
 
@@ -327,6 +387,7 @@ weeks.
 | [`docs/metrics.md`](docs/metrics.md) | Metric/KPI spec — every measure mapped to its aggregate, currency, and additivity rules |
 | [`docs/dashboards.md`](docs/dashboards.md) | Power BI dashboard design — five pages, each visual bound to an aggregate |
 | [`docs/powerbi-connection.md`](docs/powerbi-connection.md) | Connect Power BI to Snowflake `ANALYTICS_marts` + the full DAX measure set |
+| [`docs/deployment.md`](docs/deployment.md) | AWS deployment design — scheduled Fargate task, secrets, networking, cost/teardown |
 
 ---
 
