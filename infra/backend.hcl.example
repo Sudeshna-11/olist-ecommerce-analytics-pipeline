@@ -1,0 +1,7 @@
+# Copy to backend.hcl and fill in from:  terraform -chdir=bootstrap output
+# Then: terraform init -backend-config=backend.hcl
+# backend.hcl is gitignored (it names your account-specific bucket).
+
+bucket         = "olist-tfstate-<YOUR_ACCOUNT_ID>"
+region         = "us-east-1"
+dynamodb_table = "olist-tfstate-lock"

@@ -1,0 +1,13 @@
+# Terraform working files
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Account-specific / sensitive inputs — keep only the .example versions
+backend.hcl
+*.tfvars
+!*.tfvars.example
+
+# .terraform.lock.hcl is intentionally committed (pins provider versions)
