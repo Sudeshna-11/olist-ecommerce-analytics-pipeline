@@ -5,6 +5,10 @@
 crash.log
 crash.*.log
 
+# Saved plan files can embed sensitive values — never commit
+tfplan
+*.tfplan
+
 # Account-specific / sensitive inputs — keep only the .example versions
 backend.hcl
 *.tfvars

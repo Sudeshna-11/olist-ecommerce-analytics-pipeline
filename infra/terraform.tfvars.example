@@ -1,5 +1,12 @@
-# Copy to terraform.tfvars and adjust if you want non-default values.
-# terraform.tfvars is gitignored.
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
 
 aws_region  = "us-east-1"
 name_prefix = "olist"
+
+# Non-secret Snowflake config (the password lives in Secrets Manager, not here).
+snowflake_account = "ab12345.us-east-1"
+snowflake_user    = "YOUR_SNOWFLAKE_USER"
+# Optional overrides (defaults: ACCOUNTADMIN / OLIST / COMPUTE_WH):
+# snowflake_role      = "ACCOUNTADMIN"
+# snowflake_database  = "OLIST"
+# snowflake_warehouse = "COMPUTE_WH"
