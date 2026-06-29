@@ -1,0 +1,23 @@
+# Keep the build context small (applies to deploy/Dockerfile and airflow/Dockerfile,
+# both of which build from the repo root).
+.git/
+.venv/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+
+# Raw data is pulled from S3 at runtime, never baked into the image.
+data/raw/*
+!data/raw/.gitkeep
+
+# Large / irrelevant to the image
+dashboards/
+docs/
+infra/
+airflow/logs/
+*.pbix
+*.png
+
+# Local secrets must never enter an image layer
+.env
+.secrets.env
