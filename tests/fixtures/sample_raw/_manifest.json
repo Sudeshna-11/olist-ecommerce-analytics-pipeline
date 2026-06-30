@@ -1,0 +1,12 @@
+{
+  "raw_orders": 500,
+  "raw_order_items": 568,
+  "raw_order_payments": 515,
+  "raw_order_reviews": 500,
+  "raw_customers": 500,
+  "raw_products": 490,
+  "raw_sellers": 320,
+  "raw_geolocation": 2290,
+  "raw_category_translation": 71,
+  "raw_fx_rates": 1192
+}

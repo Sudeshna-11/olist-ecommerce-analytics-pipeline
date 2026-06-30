@@ -85,14 +85,22 @@ def fetch_rates(
 
 def main() -> None:
     load_env()
-    start = os.environ.get("FX_START_DATE", DEFAULT_START_DATE)
-    end = os.environ.get("FX_END_DATE", DEFAULT_END_DATE)
 
-    df = fetch_rates(start, end, BASE_CURRENCY, QUOTE_CURRENCIES)
-    log.info(
-        "Fetched %s rows (%s..%s, %s -> %s)",
-        f"{len(df):,}", start, end, BASE_CURRENCY, ",".join(QUOTE_CURRENCIES),
-    )
+    # Offline mode: load a pre-fetched CSV instead of calling Frankfurter. Used
+    # by the CI integration job so the run stays hermetic (no external network
+    # dependency). The CSV is the long-format output of fetch_rates().
+    csv_path = os.environ.get("FX_RATES_CSV")
+    if csv_path:
+        df = pd.read_csv(csv_path)
+        log.info("Loaded %s FX rows from %s (offline mode)", f"{len(df):,}", csv_path)
+    else:
+        start = os.environ.get("FX_START_DATE", DEFAULT_START_DATE)
+        end = os.environ.get("FX_END_DATE", DEFAULT_END_DATE)
+        df = fetch_rates(start, end, BASE_CURRENCY, QUOTE_CURRENCIES)
+        log.info(
+            "Fetched %s rows (%s..%s, %s -> %s)",
+            f"{len(df):,}", start, end, BASE_CURRENCY, ",".join(QUOTE_CURRENCIES),
+        )
 
     target = get_target()
     log.info("Target backend: %s", target.__name__.rsplit(".", 1)[-1])

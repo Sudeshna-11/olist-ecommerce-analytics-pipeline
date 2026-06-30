@@ -14,6 +14,7 @@ Run with:   python -m src.ingest.load_olist
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +30,9 @@ logging.getLogger("snowflake").setLevel(logging.WARNING)
 log = logging.getLogger("load_olist")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RAW_DIR = PROJECT_ROOT / "data" / "raw"
+# Defaults to data/raw; OLIST_RAW_DIR points it elsewhere (the CI integration
+# job aims it at the committed sample under tests/fixtures/sample_raw).
+RAW_DIR = Path(os.environ.get("OLIST_RAW_DIR", PROJECT_ROOT / "data" / "raw"))
 
 # Source CSV -> destination table (canonical lowercase, bronze layer)
 TABLE_MAP: dict[str, str] = {

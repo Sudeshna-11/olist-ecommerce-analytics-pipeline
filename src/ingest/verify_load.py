@@ -15,7 +15,7 @@ import logging
 import sys
 
 from src.ingest.config import load_env
-from src.ingest.expected import EXPECTED_ROW_COUNTS
+from src.ingest.expected import load_expected_counts
 from src.ingest.targets import get_target
 
 logging.basicConfig(
@@ -48,6 +48,7 @@ def diff_counts(expected: dict[str, int], actual: dict[str, int]) -> list[str]:
 
 def main() -> int:
     load_env()
+    expected = load_expected_counts()
 
     target = get_target()
     log.info("Target backend: %s", target.__name__.rsplit(".", 1)[-1])
@@ -58,17 +59,17 @@ def main() -> int:
     finally:
         target.close(conn)
 
-    problems = diff_counts(EXPECTED_ROW_COUNTS, actual)
+    problems = diff_counts(expected, actual)
     if problems:
         log.error("Row-count check FAILED (%d issue(s)):", len(problems))
         for line in problems:
             log.error(line)
         return 1
 
-    total = sum(EXPECTED_ROW_COUNTS.values())
+    total = sum(expected.values())
     log.info(
         "OK - all %d tables match expected counts (%s rows total).",
-        len(EXPECTED_ROW_COUNTS),
+        len(expected),
         f"{total:,}",
     )
     return 0
