@@ -1,6 +1,125 @@
 # Architecture
 
-Detailed architecture, decisions, and diagrams will land here over the next 8 weeks. For now, see the high-level diagram in the [project README](../README.md).
+End-to-end design of the Olist analytics pipeline: how raw CSVs become a tested,
+query-ready Kimball star schema on Snowflake, orchestrated locally by Airflow and
+in the cloud by a scheduled Fargate task, with CI and data-quality gates on every
+change. This document is the engineering reference; for the *business* angle and
+the findings the warehouse produces, see [business-insights.md](business-insights.md).
+
+## System at a glance
+
+```mermaid
+flowchart TB
+    classDef src    fill:#37474f,stroke:#1d272d,color:#fff;
+    classDef bronze fill:#5d4037,stroke:#321c19,color:#fff;
+    classDef silver fill:#455a64,stroke:#263238,color:#fff;
+    classDef gold   fill:#1b5e20,stroke:#0f3d12,color:#fff,font-weight:bold;
+    classDef bi     fill:#0d3b66,stroke:#08233d,color:#fff;
+    classDef orch   fill:#4a148c,stroke:#26064d,color:#fff;
+    classDef ci     fill:#7b1fa2,stroke:#3d0f51,color:#fff;
+
+    subgraph Sources
+        CSV[Olist CSVs<br/>9 files, ~100K orders]:::src
+        FX[Frankfurter FX API<br/>BRL→USD/EUR]:::src
+    end
+
+    subgraph Ingest [Python ingestion]
+        LOAD[load_olist.py<br/>TARGET-dispatched loader]:::src
+        FXL[fx_rates.py]:::src
+        VER[verify_load.py<br/>row-count check]:::src
+    end
+
+    subgraph Warehouse [Postgres dev / Snowflake prod]
+        RAW[(raw — bronze<br/>10 tables, 1:1 with source)]:::bronze
+        STG[staging — silver<br/>stg_olist__* views]:::silver
+        INT[intermediate<br/>ephemeral rollups + FX fill]:::silver
+        GOLD[(gold — Kimball star<br/>3 facts + 4 dims, SCD2)]:::gold
+        MART[(aggregates<br/>5 dashboard marts)]:::gold
+    end
+
+    BI[Power BI<br/>5-page report]:::bi
+
+    CSV --> LOAD --> RAW
+    FX --> FXL --> RAW
+    LOAD -.-> VER
+    RAW --> STG --> INT --> GOLD --> MART --> BI
+
+    GE[Great Expectations<br/>raw source gate]:::ci -.validates.-> RAW
+    DBT[dbt tests — 127]:::ci -.validates.-> GOLD
+
+    AF[Airflow DAG<br/>local/dev orchestrator]:::orch -.daily.-> Ingest
+    EB[EventBridge → ECS Fargate<br/>cloud prod orchestrator]:::orch -.daily.-> Ingest
+    GH[GitHub Actions CI<br/>3 jobs, no creds]:::ci -.on push/PR.-> Warehouse
+```
+
+## Data flow, stage by stage
+
+| Stage | What happens | Tech | Where |
+|-------|--------------|------|-------|
+| **Source** | 9 Olist CSVs (orders, items, payments, reviews, customers, products, sellers, geolocation, category translation) + a live FX feed | Kaggle export · Frankfurter API | `data/raw/` (gitignored) |
+| **Ingest** | CSV → 1:1 raw tables; FX fetched for the order date range; post-load row-count verification | Python, pandas, SQLAlchemy | `src/ingest/` |
+| **Bronze (`raw`)** | Untransformed landing tables, one per source. Loaded via Postgres `COPY` or Snowflake `write_pandas` | warehouse | `raw` schema |
+| **Silver (`staging`)** | Light cleaning, renames, type casts — one view per source (`stg_olist__*`); plus ephemeral intermediate rollups (order/item/payment totals, geo centroids, daily FX forward-fill) | dbt views/ephemeral | `analytics_staging` |
+| **Gold (star schema)** | Conformed Kimball model: `fct_orders`, `fct_order_items`, `fct_order_reviews` + `dim_customers/sellers/products/dates`, with SCD2 on products | dbt tables + snapshot | `analytics_marts` |
+| **Aggregates** | 5 pre-computed marts (daily revenue, category, state, seller, customer cohorts) sized for BI | dbt tables | `analytics_marts` |
+| **BI** | 5-page Power BI report (Executive / Regional / Category / Seller / Retention), Import mode, ratios re-derived in DAX | Power BI | `dashboards/` |
+
+The same dbt code runs against **two backends** — Postgres locally for fast,
+free iteration and Snowflake for production — and the full suite passes
+identically on both. See [data-modeling.md](data-modeling.md) for the grain of
+every fact and dimension and the rejected alternatives.
+
+## Orchestration: two tiers, deliberately
+
+The pipeline has **two** orchestrators, each owning a different job — this is a
+design choice, not redundancy (see [ADR-009](#decisions-log-adrs)):
+
+- **Airflow (local/dev)** — a daily DAG (`airflow/dags/`) models the pipeline as
+  a task graph: `ingest + fx → verify → dbt deps → run staging → snapshot → run
+  marts → test`, with Slack alerts on failure. This is the *development* and
+  *demonstration* orchestrator, run via Docker Compose.
+- **EventBridge → ECS Fargate (cloud/prod)** — the same containerized pipeline is
+  launched once a day by EventBridge Scheduler calling `ecs:RunTask`. No always-on
+  scheduler, no idle compute. This is the *production trigger*, provisioned by
+  Terraform (`infra/`) and costing ~$0–2/mo.
+
+Both run the **identical** `ingest → verify → dbt build` sequence; only the
+trigger differs. The application code needs zero changes between them because
+`config.load_env()` and `profiles.yml` read every credential from the
+environment, so local `.env` files and ECS secret injection are interchangeable.
+
+## Testing & data quality
+
+Two frameworks, split by layer so each failure points at the right place
+([ADR-012](#decisions-log-adrs)):
+
+- **Great Expectations** gates the **raw/bronze** layer immediately after
+  ingestion — an independent *source contract* (key integrity, value domains,
+  sane ranges). Bad source data is caught before it reaches any transform.
+- **dbt tests** (127) own the **modelled** staging and gold layers — not-null,
+  unique, accepted-values, relationships, and surrogate-key uniqueness.
+- **pytest** covers the Python ingestion (unit + one integration test).
+
+All three run in **GitHub Actions** on every push and PR, against an ephemeral
+Postgres loaded with a committed, referentially-consistent data sample — no
+credentials required. See [ci-cd.md](ci-cd.md).
+
+## Technology choices
+
+| Layer | Tool | Why this one |
+|-------|------|--------------|
+| Ingestion | Python + pandas | Simple, testable; per-backend loader modules behind one `TARGET` switch |
+| Warehouse | Postgres (dev) / Snowflake (prod) | Free local iteration; cloud-native, separation of storage/compute for prod |
+| Transformation | dbt-core | Version-controlled SQL, built-in testing, lineage, SCD2 snapshots; the analytics-engineering standard |
+| Orchestration | Airflow (dev) + EventBridge/Fargate (prod) | Airflow for the rich DAG/demo; serverless schedule for cheap prod |
+| IaC | Terraform | Reproducible AWS provisioning with remote state |
+| BI | Power BI | Most-requested BI tool; Import mode over the pre-built aggregates |
+| CI/CD | GitHub Actions | Native to the repo; runs the whole pipeline on a sample |
+| Data quality | Great Expectations + dbt tests | Independent source contract + modelled-layer correctness |
+
+These are deliberately the most recruiter-recognizable tools in the current data
+market rather than the technically-minimal choice for ~100K rows; the project is
+a portfolio piece (see the README's *Project Requirements*).
 
 ## Decisions log (ADRs)
 

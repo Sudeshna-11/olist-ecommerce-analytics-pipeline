@@ -69,11 +69,13 @@ flowchart LR
 
 If you're just landing here:
 
-1. **[`docs/data-modeling.md`](docs/data-modeling.md)** — why medallion + Kimball,
+1. **[`docs/business-insights.md`](docs/business-insights.md)** — the "so what":
+   how it's built *and* what the data says, in one read.
+2. **[`docs/architecture.md`](docs/architecture.md)** — the full system design,
+   data flow, two-tier orchestration, and the decision (ADR) log.
+3. **[`docs/data-modeling.md`](docs/data-modeling.md)** — why medallion + Kimball,
    the grain of every fact/dim, and what was deliberately rejected.
-2. **[`docs/architecture.md`](docs/architecture.md)** — how data moves from CSV to
-   warehouse to dashboard, and the infrastructure target state.
-3. **[`olist_dbt/models/`](olist_dbt/models)** — the SQL itself; each model opens
+4. **[`olist_dbt/models/`](olist_dbt/models)** — the SQL itself; each model opens
    with a comment block stating its grain and intent.
 
 ---
@@ -170,6 +172,24 @@ Import connection. Full design and the complete DAX set live in
 | Category Mix | `mart_category_revenue` | Top 15 of 72 categories drive ~76% of revenue |
 | Seller Scorecard | `mart_seller_performance` | 3,095 sellers, revenue vs review rating (churn risk) |
 | Customer Retention | `mart_customer_cohorts` | 96,096 unique shoppers, ~3% repeat rate |
+
+---
+
+## 💡 Key Findings
+
+What the warehouse actually reveals (every figure queried live from the gold
+marts — see the full write-up in [`docs/business-insights.md`](docs/business-insights.md)):
+
+- **Delivery is the #1 driver of satisfaction.** On-time orders average **4.3★**;
+  late ones average **2.6★** and nearly **half get a 1-star review**. Hitting the
+  promised date is almost the entire CX story.
+- **It's an acquisition business.** Only **3.1%** of customers ever order again
+  (measured on the true person key) — the single biggest untapped opportunity.
+- **Revenue is concentrated.** São Paulo alone is **37% of GMV** and the **top 3
+  states are 62%** — and SP is also the fastest/most reliable to deliver (8.7 vs
+  15.5 days), which is exactly why it converts better.
+- **Instalments are core.** **51%** of orders are financed — *parcelamento* isn't a
+  fringe option, it's how the majority buy.
 
 ---
 
@@ -363,7 +383,7 @@ Full walkthrough in [`docs/ci-cd.md`](docs/ci-cd.md).
 | 5 | Airflow | Daily orchestration DAG + failure alerts | ✅ Done |
 | 6 | Terraform + AWS | Deploy to ECS Fargate | ✅ Done |
 | 7 | CI/CD + Quality | GitHub Actions + Great Expectations | ✅ Done |
-| 8 | Polish | Architecture diagram, walkthrough, business write-up | ⬜ |
+| 8 | Polish | Architecture deep-dive, business write-up, demo script | ✅ Done |
 
 ---
 
@@ -373,7 +393,7 @@ Full walkthrough in [`docs/ci-cd.md`](docs/ci-cd.md).
 olist-ecommerce-analytics-pipeline/
 ├── .github/workflows/       CI: lint + unit, full pipeline on sample, image build
 ├── data/raw/                Olist CSVs (gitignored — see data/README.md)
-├── docs/                    architecture, data-modeling, metrics, dashboards, ci-cd, ...
+├── docs/                    architecture, data-modeling, metrics, ci-cd, business-insights, demo-script, ...
 ├── src/ingest/              Python ingestion + verification
 │   ├── config.py            Dual-file env loader (.env + .secrets.env)
 │   ├── load_olist.py        CSV → warehouse orchestrator (TARGET-dispatched)
@@ -426,6 +446,8 @@ olist-ecommerce-analytics-pipeline/
 | [`docs/powerbi-connection.md`](docs/powerbi-connection.md) | Connect Power BI to Snowflake `ANALYTICS_marts` + the full DAX measure set |
 | [`docs/deployment.md`](docs/deployment.md) | AWS deployment design — scheduled Fargate task, secrets, networking, cost/teardown |
 | [`docs/ci-cd.md`](docs/ci-cd.md) | GitHub Actions pipeline, the CI data sample, and the Great Expectations source gate |
+| [`docs/business-insights.md`](docs/business-insights.md) | Blended build + insights case study — key findings (delivery, retention, concentration) backed by live mart queries |
+| [`docs/demo-script.md`](docs/demo-script.md) | Scene-by-scene script for a 6–8 min recorded walkthrough |
 
 ---
 
