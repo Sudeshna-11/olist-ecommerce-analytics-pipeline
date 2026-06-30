@@ -1,0 +1,112 @@
+name: CI
+
+# Runs the project's quality gates on every push to main and every PR:
+#   unit          - lint + fast unit tests (no services, no secrets)
+#   integration   - full pipeline against an ephemeral Postgres using the
+#                   committed sample: ingest -> verify -> Great Expectations
+#                   source gate -> dbt build (127 tests) -> integration test
+#   docker-build  - the Fargate deploy image still builds
+#
+# The integration job needs no credentials: it runs against a throwaway
+# Postgres service and a small referentially-consistent data sample committed
+# under tests/fixtures/sample_raw/. See docs/ci-cd.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  unit:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: ruff check src scripts tests
+      - name: Unit tests
+        run: pytest -m "not integration"
+
+  integration:
+    name: Pipeline on sample (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: olist_user
+          POSTGRES_PASSWORD: olist_pass
+          POSTGRES_DB: olist
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U olist_user -d olist"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TARGET: postgres
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: olist
+      POSTGRES_USER: olist_user
+      POSTGRES_PASSWORD: olist_pass
+      # Point the loader and the row-count check at the committed sample.
+      OLIST_RAW_DIR: tests/fixtures/sample_raw
+      OLIST_EXPECTED_COUNTS: tests/fixtures/sample_raw/_manifest.json
+      FX_RATES_CSV: tests/fixtures/sample_raw/olist_fx_rates_sample.csv
+      GX_ANALYTICS_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Ingest sample CSVs
+        run: python -m src.ingest.load_olist
+      - name: Load FX rates (offline)
+        run: python -m src.ingest.fx_rates
+      - name: Verify raw row counts
+        run: python -m src.ingest.verify_load
+
+      - name: Great Expectations source gate (raw layer)
+        run: python scripts/ge_validate.py
+
+      # dbt graph: staging views first, then the SCD2 snapshot that reads them,
+      # then the marts, then the test suite. (A bare `dbt build` would try to
+      # build dim_products before its snapshot exists.)
+      - name: dbt deps
+        run: python scripts/dbt.py deps
+      - name: dbt run (staging)
+        run: python scripts/dbt.py run --select staging
+      - name: dbt snapshot
+        run: python scripts/dbt.py snapshot
+      - name: dbt run (marts)
+        run: python scripts/dbt.py run --exclude staging
+      - name: dbt test
+        run: python scripts/dbt.py test
+
+      - name: Integration test (loaded schema)
+        run: pytest -m integration
+
+  docker-build:
+    name: Build deploy image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Fargate pipeline image
+        run: docker build -f deploy/Dockerfile -t olist-pipeline:ci .
