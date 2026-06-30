@@ -6,6 +6,7 @@
 
 <br/>
 
+[![CI](https://github.com/Sudeshna-11/olist-ecommerce-analytics-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Sudeshna-11/olist-ecommerce-analytics-pipeline/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![dbt](https://img.shields.io/badge/dbt-1.9-FF694B?logo=dbt&logoColor=white)](https://www.getdbt.com/)
@@ -14,6 +15,8 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 [![Terraform](https://img.shields.io/badge/Terraform-1.5%2B-7B42BC?logo=terraform&logoColor=white)](infra/)
 [![AWS](https://img.shields.io/badge/AWS-ECS%20Fargate-FF9900?logo=amazonaws&logoColor=white)](docs/deployment.md)
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI-2088FF?logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
+[![Great Expectations](https://img.shields.io/badge/Great%20Expectations-data%20quality-FF6310)](docs/ci-cd.md)
 
 </div>
 
@@ -316,6 +319,39 @@ identical to local and Airflow.
 
 ---
 
+## 🧪 CI/CD & Data Quality
+
+Every push and pull request runs a [GitHub Actions pipeline](.github/workflows/ci.yml)
+with three jobs:
+
+| Job | What it does | Needs |
+|-----|--------------|-------|
+| **Lint & unit tests** | `ruff` lint + the fast unit suite (`pytest -m "not integration"`) | nothing |
+| **Pipeline on sample** | Spins an ephemeral Postgres and runs the **whole pipeline**: ingest → FX → row-count verify → **Great Expectations source gate** → `dbt build` (**127 tests**) → integration test | nothing (no secrets) |
+| **Build deploy image** | Builds the Fargate `deploy/Dockerfile` so the cloud image can't silently break | nothing |
+
+**No credentials in CI.** The integration job can't use the real Kaggle CSVs
+(they're gitignored and need an account to download), so it runs against a small
+**referentially-consistent data sample** committed under
+[`tests/fixtures/sample_raw/`](tests/fixtures/sample_raw). The sample is carved
+as a closed slice of the foreign-key graph (every child row's parent is present),
+so it survives the full dbt suite — **127 tests, all green** (the lone review-dup
+warn on the full dataset doesn't occur in the sample). Regenerate it with
+`python scripts/make_sample.py`.
+
+**Two layers of data tests, by design:**
+
+- **Great Expectations** validates the **raw (bronze) layer** right after
+  ingestion — an independent *source contract* (key integrity, value domains like
+  `review_score ∈ [1,5]`, `payment_type` in its known set, non-negative prices).
+  Bad source data is caught at the door, before any transformation runs.
+- **dbt tests** guard the **modelled** staging and gold layers (127 tests:
+  not-null, unique, accepted-values, relationships, surrogate-key uniqueness).
+
+Full walkthrough in [`docs/ci-cd.md`](docs/ci-cd.md).
+
+---
+
 ## 🚀 Roadmap
 
 | Week | Theme | Deliverable | Status |
@@ -326,7 +362,7 @@ identical to local and Airflow.
 | 4 | Power BI | Executive / regional / customer dashboards | ✅ Done |
 | 5 | Airflow | Daily orchestration DAG + failure alerts | ✅ Done |
 | 6 | Terraform + AWS | Deploy to ECS Fargate | ✅ Done |
-| 7 | CI/CD + Quality | GitHub Actions + Great Expectations | ⬜ |
+| 7 | CI/CD + Quality | GitHub Actions + Great Expectations | ✅ Done |
 | 8 | Polish | Architecture diagram, walkthrough, business write-up | ⬜ |
 
 ---
@@ -335,13 +371,15 @@ identical to local and Airflow.
 
 ```
 olist-ecommerce-analytics-pipeline/
+├── .github/workflows/       CI: lint + unit, full pipeline on sample, image build
 ├── data/raw/                Olist CSVs (gitignored — see data/README.md)
-├── docs/                    architecture, data-modeling, metrics, dashboards, powerbi-connection
+├── docs/                    architecture, data-modeling, metrics, dashboards, ci-cd, ...
 ├── src/ingest/              Python ingestion + verification
 │   ├── config.py            Dual-file env loader (.env + .secrets.env)
 │   ├── load_olist.py        CSV → warehouse orchestrator (TARGET-dispatched)
 │   ├── fx_rates.py          Frankfurter API → raw_fx_rates
 │   ├── verify_load.py       Post-load row-count check
+│   ├── expected.py          Expected raw row counts (sample-aware via env)
 │   └── targets/             Per-backend loaders (postgres.py, snowflake.py)
 ├── olist_dbt/               dbt project
 │   ├── models/
@@ -353,7 +391,7 @@ olist-ecommerce-analytics-pipeline/
 │   ├── macros/              convert_brl (FX conversion)
 │   ├── tests/               custom singular tests
 │   └── profiles.yml         dev=Postgres, prod=Snowflake
-├── scripts/dbt.py           Wrapper: load_env() then dispatch to dbt
+├── scripts/                 dbt.py wrapper · ge_validate.py source gate · make_sample.py
 ├── airflow/                 Daily orchestration DAG (Docker Compose, week 5)
 │   ├── dags/                olist_daily_pipeline (ingest → snapshot → dbt)
 │   ├── Dockerfile           Airflow image + isolated project venv
@@ -368,13 +406,12 @@ olist-ecommerce-analytics-pipeline/
 │   ├── secrets.tf           Snowflake password (Secrets Manager)
 │   └── schedule.tf          EventBridge daily trigger
 ├── tests/                   pytest unit + integration tests
+│   └── fixtures/sample_raw/ committed FK-consistent data sample for CI
 ├── docker-compose.yml       Local Postgres
 ├── requirements.txt         Runtime deps
-├── requirements-dev.txt     + pytest, dbt
+├── requirements-dev.txt     + pytest, dbt, great-expectations, ruff
 └── README.md
 ```
-
-The `.github/workflows/` folder arrives in week 7.
 
 ---
 
@@ -388,6 +425,7 @@ The `.github/workflows/` folder arrives in week 7.
 | [`docs/dashboards.md`](docs/dashboards.md) | Power BI dashboard design — five pages, each visual bound to an aggregate |
 | [`docs/powerbi-connection.md`](docs/powerbi-connection.md) | Connect Power BI to Snowflake `ANALYTICS_marts` + the full DAX measure set |
 | [`docs/deployment.md`](docs/deployment.md) | AWS deployment design — scheduled Fargate task, secrets, networking, cost/teardown |
+| [`docs/ci-cd.md`](docs/ci-cd.md) | GitHub Actions pipeline, the CI data sample, and the Great Expectations source gate |
 
 ---
 
